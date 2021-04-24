@@ -94,7 +94,7 @@ class obstacle_avoidance_server(object):
                 if self.lidar['range'] < 0.2:
                     self.robot_controller.set_move_cmd(linear=-0.1, angular = 0.0)
                 else:
-                    if self.lidar['closest angle'] > 300:
+                    if self.lidar['closest angle'] > 285:
                         self.robot_controller.set_move_cmd(linear=0.0, angular = 0.3)
                     else:
                         self.robot_controller.set_move_cmd(linear=0.0, angular = -0.3)
