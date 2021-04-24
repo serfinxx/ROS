@@ -44,8 +44,8 @@ class obstacle_avoidance_server(object):
 
         raw_data = np.array(lidar_data.ranges)
 
-        # Front of object
-        angle_tolerance = 90
+        # Detection angle
+        angle_tolerance = 60
         self.lidar['range'] = min(min(raw_data[:angle_tolerance]),
                                min(raw_data[-angle_tolerance:]))
 
