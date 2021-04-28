@@ -44,19 +44,17 @@ class obstacle_avoidance_server(object):
 
         raw_data = np.array(lidar_data.ranges)
 
-        # Detection angle
-        angle_tolerance = 60
-        self.lidar['range'] = min(min(raw_data[:angle_tolerance]),
+        # Distance Detection
+        angle_tolerance = 50
+        self.lidar['range'] = min(min(raw_data[:angle_tolerance]),      # closest distance in 60 degree (range)
                                min(raw_data[-angle_tolerance:]))
 
-        # Closest object
-        self.lidar['closest'] = min(raw_data)
+        self.lidar['closest'] = min(raw_data)       # closest distance in all degrees
 
-        # Angle of closest object
-        self.lidar['closest angle']=raw_data.argmin()
+        # Angle Detection
+        self.lidar['closest angle']=raw_data.argmin()       # angle of closest object in all degrees
 
-        # Angle of farest object 
-        self.lidar['farest angle']=raw_data.argmax()
+        self.lidar['farest angle']=raw_data.argmax()        # angle of farest object in all degrees
     
     def action_server_launcher(self, goal):
         r = rospy.Rate(10)
@@ -90,14 +88,11 @@ class obstacle_avoidance_server(object):
 
         # Before collision
         while self.lidar['range'] > goal.approach_distance:
-            if (self.lidar['closest angle'] < 75 or self.lidar['closest angle'] > 285) and self.lidar['range'] < 0.4:
-                if self.lidar['range'] < 0.2:
-                    self.robot_controller.set_move_cmd(linear=-0.1, angular = 0.0)
+            if (self.lidar['closest angle'] < 50 or self.lidar['closest angle'] > 310) and self.lidar['range'] < 0.4:
+                if self.lidar['closest angle'] > 310:
+                    self.robot_controller.set_move_cmd(linear=0.0, angular = 0.3)
                 else:
-                    if self.lidar['closest angle'] > 285:
-                        self.robot_controller.set_move_cmd(linear=0.0, angular = 0.3)
-                    else:
-                        self.robot_controller.set_move_cmd(linear=0.0, angular = -0.3)
+                    self.robot_controller.set_move_cmd(linear=0.0, angular = -0.3)
             else:
                 self.robot_controller.set_move_cmd(linear=goal.fwd_velocity, angular = 0)
             self.robot_controller.publish()
