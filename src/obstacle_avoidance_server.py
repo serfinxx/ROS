@@ -81,7 +81,7 @@ class obstacle_avoidance_server(object):
         start_y = self.robot_odom.posy
         distance_travelled = 0.0
 
-        while not rospy.is_shutdown() or not self.actionserver.is_preempt_requested():
+        while not rospy.is_shutdown():
             # Action making
             if self.lidar['front_distance'] > 0.3:
                 if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
