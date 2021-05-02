@@ -12,6 +12,7 @@ from sensor_msgs.msg import Image
 
 # Import some other modules from within this package
 from move_tb3 import MoveTB3
+from tb3_odometry import TB3Odometry
 
 class object_detection(object):
 
@@ -28,9 +29,9 @@ class object_detection(object):
         self.m00 = 0
         self.m00_min = 100000
 
-        # Blue, Red, Green, Turquoise cvt colour values:
-        self.lower = [(115, 224, 100), (0, 185, 100), (25, 150, 100), (75, 150, 100)]
-        self.upper = [(130, 255, 255), (10, 255, 255), (70, 255, 255), (100, 255, 255)]
+        # Blue, Red, Green, Turquoise, Purple, Yellow hsv colour values:
+        self.lower = [(115, 224, 100), (0, 185, 100), (25, 150, 100), (75, 150, 100), (145, 185, 100), (28, 180, 100)]
+        self.upper = [(130, 255, 255), (10, 255, 255), (70, 255, 255), (100, 255, 255), (150, 250, 255), (32, 255, 255)]
 
     
     def camera_callback(self, img_data):
@@ -49,7 +50,7 @@ class object_detection(object):
         crop_img = cv_img[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
         hsv_img = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
 
-        colours = ['Blue','Red','Green','Turquoise']
+        colours = ['Blue','Red','Green','Turquoise','Purple','Yellow']
 
         for i in range(4):
             if i == 0:
@@ -67,6 +68,12 @@ class object_detection(object):
         
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
+
+    def rotate_180_degree(self):
+ 
+
+    def detect_colour(self, img_data):
+
 
     def action_server_launcher(self, goal):
         r = rospy.Rate(10)
