@@ -23,9 +23,6 @@ class object_detection(object):
 
         self.robot_controller = MoveTB3()
 
-        self.ctrl_c = False
-        rospy.on_shutdown(self.shutdown_ops)
-
         self.rate = rospy.Rate(5)
         
         self.m00 = 0
@@ -78,7 +75,7 @@ class object_detection(object):
         self.robot_controller.set_move_cmd(linear=0)
 
         # Strats here
-        while not self.ctrl_c:
+        while :
 
 
 
