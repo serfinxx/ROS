@@ -49,9 +49,9 @@ class obstacle_avoidance_server(object):
         self.lidar['front_distance'] = min(
             min(min(raw_data[342:359]), min(raw_data[0:17])), 10)      # front 36 degrees
         self.lidar['fleft_distance'] = min(
-            min(raw_data[306:341]), 10)      # front left 36 degrees
+            min(raw_data[306:342]), 10)      # front left 36 degrees
         self.lidar['fright_distance'] = min(
-            min(raw_data[18:54]), 10)      # front right degrees
+            min(raw_data[18:54]), 10)      # front right 36 degrees
 
     def action_server_launcher(self, goal):
         r = rospy.Rate(10)
