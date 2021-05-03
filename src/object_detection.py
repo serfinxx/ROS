@@ -12,6 +12,7 @@ from sensor_msgs.msg import Image
 
 # Import some other modules from within this package
 from move_tb3 import MoveTB3
+from tb3_odometry import TB3Odometry
 
 class object_detection(object):
 
@@ -23,9 +24,12 @@ class object_detection(object):
         self.cvbridge_interface = CvBridge()
 
         self.robot_controller = MoveTB3()
+        self.robot_odom = TB3Odometry()
         
         # Default speed
         self.robot_controller.set_move_cmd(0.0, 0.0)
+        self.status = 1
+        
 
         self.move_rate = '' # fast, slow or stop
         self.stop_counter = 0
@@ -82,9 +86,31 @@ class object_detection(object):
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
 
+    def rotate_180_degree(self, init_yaw=0.0):
+        init_yaw = (init_yaw+360)%360
+        while abs(((init_yaw+180)+360)%360-((self.robot_odom.yaw+360)%360)) > 1:
+            self.robot_controller.set_move_cmd(0.0, 0.2)
+            self.robot_controller.publish()
+            print(self.robot_odom.yaw)
+        
+        self.robot_controller.stop()
+
+        
+
+
     def main(self):
         while not self.ctrl_c:
             # Strats here:
+            if self.status == 1:
+                # get current degree
+                current_yaw = self.robot_odom.yaw
+                # rotate 180 degrees
+                self.rotate_180_degree(init_yaw=current_yaw)
+                self.status += 1
+            else:
+                self.robot_controller.stop()
+            
+            
 
 
 
@@ -92,6 +118,7 @@ class object_detection(object):
             
             self.robot_controller.publish()
             self.rate.sleep()
+        
             
 if __name__ == '__main__':
     object_detection = object_detection()
