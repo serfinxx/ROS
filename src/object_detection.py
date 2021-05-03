@@ -29,13 +29,18 @@ class object_detection(object):
         self.cvbridge_interface = CvBridge()
 
         self.robot_controller = MoveTB3()
-        self.robot_odom = TB3Odometry()
         
         # Default vars
         self.robot_controller.set_move_cmd(0.0, 0.0)
         self.hsv_img = np.zeros((1920,1080,3), np.uint8)
-        self.target_color_bounds = ([0, 255, 100], [0, 255, 255])
+        self.target_color_bounds = ([0, 0, 100], [255, 255, 255])
+        self.mask = np.zeros((1920,1080,1), np.uint8)
         self.status = 0
+        self.turn_vel_fast = -0.5
+        self.turn_vel_slow = -0.1
+        self.move_rate = '' # fast, slow or stop
+        self.m00 = 0
+        self.m00_min = 100000
 
         # Shutdown hook 
         self.ctrl_c = False
@@ -73,6 +78,16 @@ class object_detection(object):
         crop_img = cv_img[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
         self.hsv_img = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
 
+        self.mask = cv2.inRange(self.hsv_img, np.array(self.target_color_bounds[0]), np.array(self.target_color_bounds[1]))
+
+        m = cv2.moments(self.mask)
+        self.m00 = m['m00']
+        self.cy = m['m10'] / (m['m00'] + 1e-5)
+
+        if self.m00 > self.m00_min:
+            cv2.circle(crop_img, (int(self.cy), 200), 10, (0, 0, 255), 2)
+
+
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
 
@@ -93,36 +108,68 @@ class object_detection(object):
         for colour_name, (lower, upper) in self.colour_boundaries.items():
             lower_bound = np.array(lower)
             upper_bound = np.array(upper)
-            mask = cv2.inRange(self.hsv_img, lower_bound, upper_bound)
-            if mask.any():
-                print("SEARCH INITIATED: The target colour is {}".format (colour_name))
+            mask_checker = cv2.inRange(self.hsv_img, lower_bound, upper_bound)
+            if mask_checker.any():
+                print("SEARCH INITIATED: The target colour is {}.".format (colour_name))
                 self.target_color_bounds = self.colour_boundaries[colour_name]
                 break
         
-    def main(self):
+    def action_launcher(self):
         while not self.ctrl_c:
             # Strats here:
-            if self.status == 0:
-                # rotate 180 degrees
+            if self.status == 0:        # rotate 180 degrees
                 self.rotate_by_degree(90)
                 self.status += 1
-            if self.status == 1:
+            elif self.status == 1:      # select target colour
                 self.colour_selection()
                 self.status += 1
-            if self.status == 2:
+            elif self.status == 2:      # turn back
                 self.rotate_by_degree(90, "right")
                 self.status +=1
+            elif self.status == 3:      # move to centre of map
+                self.robot_controller.set_move_cmd(0.2, 0.0)
+                self.robot_controller.publish()
+                time.sleep(5)
+                self.status += 1
+            elif self.status == 4:      # turn left to start scanning
+                self.rotate_by_degree(100)
+                self.status += 1
+            elif self.status == 5:      # scan
+                if self.m00 > self.m00_min:
+                # blob detected
+                    if self.cy >= 560-100 and self.cy <= 560+100:
+                        if self.move_rate == 'slow':
+                            self.move_rate = 'stop'
+                    else:
+                        self.move_rate = 'slow'
+                else:
+                    self.move_rate = 'fast'
+                    
+                if self.move_rate == 'fast':
+                    # print("MOVING FAST: I can't see anything at the moment (blob size = {:.0f}), scanning the area...".format(self.m00))
+                    self.robot_controller.set_move_cmd(0.0, self.turn_vel_fast)
+                elif self.move_rate == 'slow':
+                    # print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
+                    self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
+                elif self.move_rate == 'stop':
+                    # print("STOPPED: The blob of colour is now dead-ahead at y-position {:.0f} pixels...".format(self.cy))
+                    self.robot_controller.stop()
+                    self.status += 1
+                else:
+                    # print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
+                    self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
+                
+                self.robot_controller.publish()
+                self.rate.sleep()
             else:
+                print("SEARCH COMPLETE: The robot is now facing the target pillar.")
                 break
             
-            
-            self.robot_controller.publish()
-            self.rate.sleep()
         
             
 if __name__ == '__main__':
     object_detection = object_detection()
     try:
-        object_detection.main()
+        object_detection.action_launcher()
     except rospy.ROSInterruptException:
         pass

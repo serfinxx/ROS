@@ -1,6 +1,4 @@
 <launch>
-  <node name="od_client" pkg="team54" type="obstacle_detection_client.py" output="screen">
-  </node>
-  <node name="od_server" pkg="team54" type="obstacle_detection_server.py" output="screen">
+  <node name="object_detection" pkg="team54" type="object_detection.py" output="screen">
   </node>
 </launch>
