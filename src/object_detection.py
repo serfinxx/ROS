@@ -12,7 +12,6 @@ from sensor_msgs.msg import Image
 
 # Import some other modules from within this package
 from move_tb3 import MoveTB3
-from tb3_odometry import TB3Odometry
 
 # Import other modules
 import numpy as np
@@ -23,7 +22,6 @@ class object_detection(object):
 
     def __init__(self):
         rospy.init_node('object_detection')
-        self.base_image_path = '/home/student/myrosdata/week6_images'
         self.camera_subscriber = rospy.Subscriber("/camera/rgb/image_raw",
             Image, self.camera_callback)
         self.cvbridge_interface = CvBridge()
