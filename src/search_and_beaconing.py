@@ -18,7 +18,6 @@ from tb3_odometry import TB3Odometry
 # Import other modules
 import numpy as np
 import math
-import time
 from distribution import Distribution
 
 class search_and_beaconing(object):
@@ -48,7 +47,7 @@ class search_and_beaconing(object):
         self.hsv_img = np.zeros((1920,1080,3), np.uint8)
         self.target_color_bounds = ([0, 0, 100], [255, 255, 255])
         self.mask = np.zeros((1920,1080,1), np.uint8)
-        self.status = 0
+        self.status = 3
         self.walkable = False
         self.desired_distance = 0
         self.current_x = self.robot_odom.posx
@@ -124,7 +123,7 @@ class search_and_beaconing(object):
             min(raw_data[18:54]), 10)      # front right 36 degrees
 
     def rotate_by_degree(self, degree):
-        time.sleep(1)
+        rospy.sleep(0.1)
         speed = 0.4
         t = math.radians(abs(degree)) / speed
         if degree < 0:
@@ -132,7 +131,7 @@ class search_and_beaconing(object):
         else:
             self.robot_controller.set_move_cmd(0.0, speed)
         self.robot_controller.publish()
-        time.sleep(t)
+        rospy.sleep(t)
 
         self.robot_controller.stop()
 
@@ -148,7 +147,7 @@ class search_and_beaconing(object):
 
     def levy_flight_setup(self):
         # Get the current robot odometry
-        self.desired_distance = 100*self.distribution.levy(5)
+        self.desired_distance = 100 * self.distribution.levy(5)
         desired_angle = self.distribution.uniform(-180,180)
         self.rotate_by_degree(desired_angle)
         self.robot_controller.set_move_cmd(0.2, 0.0)
@@ -157,27 +156,46 @@ class search_and_beaconing(object):
             
     def levy_walker(self):
         if self.walkable:
-            print("moving")
             self.robot_controller.publish()
+            print("moving")
             self.current_x = self.robot_odom.posx
             self.current_y = self.robot_odom.posy
-            distance_travelled = np.sqrt(pow(self.last_x-self.current_x, 2) + pow(self.last_y-self.current_y, 2))
+            distance_travelled = np.sqrt(pow(self.current_x-self.last_x, 2) + pow(self.current_y-self.last_y, 2))
             if self.lidar['front_distance'] < 0.4 or self.lidar['fleft_distance'] < 0.4 or self.lidar['fright_distance'] < 0.4 or distance_travelled >= self.desired_distance:
-                print("not walkable, traveld {}".format (distance_travelled))
+                print("too close!! traveld {}".format (distance_travelled))
                 self.walkable = False
+                self.robot_controller.stop()
         else:
-            self.robot_controller.stop()
             self.levy_flight_setup()
             self.last_x = self.robot_odom.posx
             self.last_y = self.robot_odom.posy
-            if self.lidar['front_distance'] > 0.4 or self.lidar['fleft_distance'] > 0.4 or self.lidar['fright_distance'] > 0.4:
+            if self.lidar['front_distance'] > 0.4 and self.lidar['fleft_distance'] > 0.4 and self.lidar['fright_distance'] > 0.4:
                 print("walkable")
                 self.walkable = True
 
-        
+
     def action_launcher(self):
         while not self.ctrl_c:
+            # Strats here:
+            if self.status == 0:        # rotate 90 degrees
+                self.rotate_by_degree(90)
+                self.status += 1
+            elif self.status == 1:      # select target colour
+                self.colour_selection()
+                self.status += 1
+            elif self.status == 2:      # turn back
+                self.rotate_by_degree(-90)
+                self.status +=1
+            elif self.status == 3:      # move out of start zone
+                rospy.sleep(1)
+                self.robot_controller.set_move_cmd(0.2, 0.0)
+                self.robot_controller.publish()
+                rospy.sleep(2)
+                self.status += 1
+            elif self.status == 4:
                 self.levy_walker()
+            else:
+                break
                 
             
         
