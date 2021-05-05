@@ -65,22 +65,22 @@ class obstacle_avoidance(object):
             # Action making
             if self.lidar['front_distance'] > 0.3:
                 if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
                 elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.3)
+                    self.robot_controller.set_move_cmd(linear=0.025, angular=0.4)
                 elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
                 else:
-                    self.robot_controller.set_move_cmd(linear=0.1, angular=0)
+                    self.robot_controller.set_move_cmd(linear=0.12, angular=0)
             else:
                 if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
                 elif self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
                 elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.3)
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.4)
                 else:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
             self.robot_controller.publish()
 
             
