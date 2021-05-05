@@ -89,11 +89,11 @@ class object_detection(object):
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
 
-    def rotate_by_degree(self, degree, direction="left"):
+    def rotate_by_degree(self, degree):
         time.sleep(1)
-        speed = 0.2
-        t = math.radians(degree) / speed
-        if direction is "right":
+        speed = 0.4
+        t = math.radians(abs(degree)) / speed
+        if degree < 0:
             self.robot_controller.set_move_cmd(0.0, -speed)
         else:
             self.robot_controller.set_move_cmd(0.0, speed)
@@ -115,14 +115,14 @@ class object_detection(object):
     def action_launcher(self):
         while not self.ctrl_c:
             # Strats here:
-            if self.status == 0:        # rotate 180 degrees
+            if self.status == 0:        # rotate 90 degrees
                 self.rotate_by_degree(90)
                 self.status += 1
             elif self.status == 1:      # select target colour
                 self.colour_selection()
                 self.status += 1
             elif self.status == 2:      # turn back
-                self.rotate_by_degree(90, "right")
+                self.rotate_by_degree(-90)
                 self.status +=1
             elif self.status == 3:      # move to centre of map
                 self.robot_controller.set_move_cmd(0.2, 0.0)
