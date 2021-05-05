@@ -9,6 +9,7 @@ from cv_bridge import CvBridge
 
 # Import all the necessary ROS message types:
 from sensor_msgs.msg import Image
+from sensor_msgs.msg import LaserScan
 
 # Import some other modules from within this package
 from move_tb3 import MoveTB3
@@ -17,16 +18,28 @@ from move_tb3 import MoveTB3
 import numpy as np
 import math
 import time
+from distribution import Distribution
 
 class search_and_beaconing(object):
 
     def __init__(self):
         rospy.init_node('search_and_beaconing')
+
+        # Camera subscriber
         self.camera_subscriber = rospy.Subscriber("/camera/rgb/image_raw",
             Image, self.camera_callback)
+
+        # Lidar subscriber
+        self.lidar_subscriber = rospy.Subscriber(
+            '/scan', LaserScan, self.lidar_callback)
+        self.lidar = {'front_distance': 0.0,
+                      'fleft_distance': 0.0,
+                      'fright_distance': 0.0}
+
         self.cvbridge_interface = CvBridge()
 
         self.robot_controller = MoveTB3()
+        self.distribution = Distribution()
         
         # Default vars
         self.robot_controller.set_move_cmd(0.0, 0.0)
@@ -89,11 +102,24 @@ class search_and_beaconing(object):
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
 
-    def rotate_by_degree(self, degree, direction="left"):
+    def lidar_callback(self, lidar_data):
+        """Returns arrays of lidar data"""
+
+        raw_data = np.array(lidar_data.ranges)
+
+        # Distance Detection
+        self.lidar['front_distance'] = min(
+            min(min(raw_data[342:359]), min(raw_data[0:17])), 10)      # front 36 degrees
+        self.lidar['fleft_distance'] = min(
+            min(raw_data[306:342]), 10)      # front left 36 degrees
+        self.lidar['fright_distance'] = min(
+            min(raw_data[18:54]), 10)      # front right 36 degrees
+
+    def rotate_by_degree(self, degree):
         time.sleep(1)
         speed = 0.2
-        t = math.radians(degree) / speed
-        if direction is "right":
+        t = math.radians(abs(degree)) / speed
+        if degree > 0:
             self.robot_controller.set_move_cmd(0.0, -speed)
         else:
             self.robot_controller.set_move_cmd(0.0, speed)
@@ -111,6 +137,29 @@ class search_and_beaconing(object):
                 print("SEARCH INITIATED: The target colour is {}.".format (colour_name))
                 self.target_color_bounds = self.colour_boundaries[colour_name]
                 break
+
+    def levy_walker(self):
+        # Action making
+        if self.lidar['front_distance'] > 0.4:
+            if self.lidar['fleft_distance'] > 0.4 and self.lidar['fright_distance'] < 0.4:
+                self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
+            elif self.lidar['fleft_distance'] < 0.4 and self.lidar['fright_distance'] > 0.4:
+                self.robot_controller.set_move_cmd(linear=0.025, angular=0.4)
+            elif self.lidar['fleft_distance'] < 0.4 and self.lidar['fright_distance'] < 0.4:
+                self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
+            else:
+                self.robot_controller.set_move_cmd(linear=0.12, angular=0)
+        else:
+            if self.lidar['fleft_distance'] > 0.4 and self.lidar['fright_distance'] > 0.4:
+                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+            elif self.lidar['fleft_distance'] > 0.4 and self.lidar['fright_distance'] < 0.4:
+                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+            elif self.lidar['fleft_distance'] < 0.4 and self.lidar['fright_distance'] > 0.4:
+                self.robot_controller.set_move_cmd(linear=0.0, angular=0.4)
+            else:
+                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+        self.robot_controller.publish()
+
         
     def action_launcher(self):
         while not self.ctrl_c:
@@ -122,46 +171,10 @@ class search_and_beaconing(object):
                 self.colour_selection()
                 self.status += 1
             elif self.status == 2:      # turn back
-                self.rotate_by_degree(90, "right")
+                self.rotate_by_degree(-90)
                 self.status +=1
-            elif self.status == 3:      # move to centre of map
-                self.robot_controller.set_move_cmd(0.2, 0.0)
-                self.robot_controller.publish()
-                time.sleep(5)
-                self.status += 1
-            elif self.status == 4:      # turn left to start scanning
-                self.rotate_by_degree(100)
-                self.status += 1
-            elif self.status == 5:      # scan
-                if self.m00 > self.m00_min:
-                # blob detected
-                    if self.cy >= 560-100 and self.cy <= 560+100:
-                        if self.move_rate == 'slow':
-                            self.move_rate = 'stop'
-                    else:
-                        self.move_rate = 'slow'
-                else:
-                    self.move_rate = 'fast'
-                    
-                if self.move_rate == 'fast':
-                    # print("MOVING FAST: I can't see anything at the moment (blob size = {:.0f}), scanning the area...".format(self.m00))
-                    self.robot_controller.set_move_cmd(0.0, self.turn_vel_fast)
-                elif self.move_rate == 'slow':
-                    # print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
-                    self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
-                elif self.move_rate == 'stop':
-                    # print("STOPPED: The blob of colour is now dead-ahead at y-position {:.0f} pixels...".format(self.cy))
-                    self.robot_controller.stop()
-                    self.status += 1
-                else:
-                    # print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
-                    self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
-                
-                self.robot_controller.publish()
-                self.rate.sleep()
             else:
-                print("SEARCH COMPLETE: The robot is now facing the target pillar.")
-                break
+                self.levy_walker()
             
         
             
