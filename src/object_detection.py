@@ -16,7 +16,6 @@ from move_tb3 import MoveTB3
 # Import other modules
 import numpy as np
 import math
-import time
 
 class object_detection(object):
 
@@ -90,7 +89,7 @@ class object_detection(object):
         cv2.waitKey(1)
 
     def rotate_by_degree(self, degree):
-        time.sleep(1)
+        rospy.sleep(1)
         speed = 0.4
         t = math.radians(abs(degree)) / speed
         if degree < 0:
@@ -98,7 +97,7 @@ class object_detection(object):
         else:
             self.robot_controller.set_move_cmd(0.0, speed)
         self.robot_controller.publish()
-        time.sleep(t)
+        rospy.sleep(t)
 
         self.robot_controller.stop()
 
@@ -127,7 +126,7 @@ class object_detection(object):
             elif self.status == 3:      # move to centre of map
                 self.robot_controller.set_move_cmd(0.2, 0.0)
                 self.robot_controller.publish()
-                time.sleep(5)
+                rospy.sleep(5)
                 self.status += 1
             elif self.status == 4:      # turn left to start scanning
                 self.rotate_by_degree(100)
