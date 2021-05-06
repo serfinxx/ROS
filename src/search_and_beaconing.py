@@ -151,6 +151,34 @@ class search_and_beaconing(object):
                 self.target_color_bounds = self.colour_boundaries[colour_name]
                 break
 
+    def target_seeker(self):
+        if self.m00 > self.m00_min:
+            # blob detected
+            if self.cy >= 560-100 and self.cy <= 560+100:
+                if self.move_rate == 'slow':
+                    self.move_rate = 'stop'
+                    self.stop_counter = 20
+            else:
+                self.move_rate = 'slow'
+        else:
+            self.move_rate = 'fast'
+            
+        if self.move_rate == 'fast':
+            print("MOVING FAST: I can't see anything at the moment (blob size = {:.0f}), scanning the area...".format(self.m00))
+            self.robot_controller.set_move_cmd(0.0, self.turn_vel_fast)
+        elif self.move_rate == 'slow':
+            print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
+            self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
+        elif self.move_rate == 'stop' and self.stop_counter > 0:
+            print("STOPPED: The blob of colour is now dead-ahead at y-position {:.0f} pixels... Counting down: {}".format(self.cy, self.stop_counter))
+            self.robot_controller.set_move_cmd(0.0, 0.0)
+        else:
+            print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
+            self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
+        
+        self.robot_controller.publish()
+        self.rate.sleep()
+
     def levy_flight_setup(self):
         # Get the current robot odometry
         self.desired_distance = 100 * self.distribution.levy(5)
