@@ -206,12 +206,8 @@ class search_and_beaconing(object):
             if self.status == 0:        # rotate 90 degrees
                 rospy.sleep(1)
                 self.rotate_by_degree(90)
-                speed = 0.4
-                t = abs(math.radians(90)/speed)
-                rospy.sleep(t)
                 self.status += 1
             if self.status == 1:      # select target colour
-                print("yeet")
                 self.colour_selection()
                 self.status += 1
             if self.status == 2:      # turn back
