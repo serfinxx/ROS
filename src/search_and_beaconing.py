@@ -42,23 +42,29 @@ class search_and_beaconing(object):
         self.robot_odom = TB3Odometry()
         self.distribution = Distribution()
         
-        # Default vars
+        # Robot control vars
         self.robot_controller.set_move_cmd(0.0, 0.0)
+
+        # Camera vars
         self.hsv_img = np.zeros((1920,1080,3), np.uint8)
         self.target_color_bounds = ([0, 0, 100], [255, 255, 255])
         self.mask = np.zeros((1920,1080,1), np.uint8)
-        self.status = 0
+        self.turn_vel_fast = -0.5
+        self.turn_vel_slow = -0.1
+        self.move_rate = '' # fast, slow or stop
+        self.m00 = 0
+        self.m00_min = 100000
+
+        # Levy algorithm vars
         self.walkable = False
         self.desired_distance = 0
         self.current_x = self.robot_odom.posx
         self.current_y = self.robot_odom.posy
         self.last_x = self.robot_odom.posx
         self.last_y = self.robot_odom.posy
-        self.turn_vel_fast = -0.5
-        self.turn_vel_slow = -0.1
-        self.move_rate = '' # fast, slow or stop
-        self.m00 = 0
-        self.m00_min = 100000
+
+        # Satus control vars
+        self.status = 0
 
         # Shutdown hook 
         self.ctrl_c = False
@@ -122,19 +128,17 @@ class search_and_beaconing(object):
         self.lidar['fright_distance'] = min(
             min(raw_data[18:54]), 10)      # front right 36 degrees
 
-    def rotate_by_degree(self, degree, init_yaw):
-        init_yaw = (init_yaw+720)%360
-        target_yaw = (init_yaw+degree+720)%360
-        print(init_yaw)
-        if degree > 0:
-            while target_yaw-((self.robot_odom.yaw+360)%360) > 0:
-                self.robot_controller.set_move_cmd(0.0, 0.4)
-                self.robot_controller.publish()
+    def rotate_by_degree(self, degree):
+        rospy.sleep(1)
+        speed = 0.4
+        t = math.radians(abs(degree)) / speed
+        if degree < 0:
+            self.robot_controller.set_move_cmd(0.0, -speed)
         else:
-            while target_yaw-((self.robot_odom.yaw+360)%360) < 0:
-                self.robot_controller.set_move_cmd(0.0, -0.4)
-                self.robot_controller.publish()
-            
+            self.robot_controller.set_move_cmd(0.0, speed)
+        self.robot_controller.publish()
+        rospy.sleep(t)
+
         self.robot_controller.stop()
 
     def colour_selection(self):
@@ -151,7 +155,7 @@ class search_and_beaconing(object):
         # Get the current robot odometry
         self.desired_distance = 100 * self.distribution.levy(5)
         desired_angle = self.distribution.uniform(-180,180)
-        self.rotate_by_degree(desired_angle, self.robot_odom.yaw)
+        self.rotate_by_degree(desired_angle)
         self.robot_controller.set_move_cmd(0.2, 0.0)
         print("desired distance is: {}".format (self.desired_distance))
         print("desired angle is: {}".format (desired_angle))
@@ -201,24 +205,27 @@ class search_and_beaconing(object):
             # Strats here:
             if self.status == 0:        # rotate 90 degrees
                 rospy.sleep(1)
-                self.rotate_by_degree(90, self.robot_odom.yaw)
+                self.rotate_by_degree(90)
+                speed = 0.4
+                t = abs(math.radians(90)/speed)
+                rospy.sleep(t)
                 self.status += 1
-            elif self.status == 1:      # select target colour
+            if self.status == 1:      # select target colour
+                print("yeet")
                 self.colour_selection()
                 self.status += 1
-            elif self.status == 2:      # turn back
-                self.rotate_by_degree(-90, self.robot_odom.yaw)
+            if self.status == 2:      # turn back
+                self.rotate_by_degree(-90)
                 self.status +=1
-            elif self.status == 3:      # move out of start zone
+            if self.status == 3:      # move out of start zone
                 rospy.sleep(1)
                 self.robot_controller.set_move_cmd(0.2, 0.0)
                 self.robot_controller.publish()
                 rospy.sleep(2)
                 self.status += 1
-            elif self.status == 4:
+            if self.status == 4:
                 self.levy_walker()
-            else:
-                break
+            
                 
             
         

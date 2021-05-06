@@ -90,19 +90,17 @@ class object_detection(object):
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
 
-    def rotate_by_degree(self, degree, init_yaw):
-        init_yaw = (init_yaw+720)%360
-        target_yaw = (init_yaw+degree+720)%360
-        print(init_yaw)
-        if degree > 0:
-            while target_yaw-((self.robot_odom.yaw+360)%360) > 0:
-                self.robot_controller.set_move_cmd(0.0, 0.4)
-                self.robot_controller.publish()
+    def rotate_by_degree(self, degree):
+        rospy.sleep(1)
+        speed = 0.4
+        t = math.radians(abs(degree)) / speed
+        if degree < 0:
+            self.robot_controller.set_move_cmd(0.0, -speed)
         else:
-            while target_yaw-((self.robot_odom.yaw+360)%360) < 0:
-                self.robot_controller.set_move_cmd(0.0, -0.4)
-                self.robot_controller.publish()
-            
+            self.robot_controller.set_move_cmd(0.0, speed)
+        self.robot_controller.publish()
+        rospy.sleep(t)
+
         self.robot_controller.stop()
 
     def colour_selection(self):
@@ -120,21 +118,21 @@ class object_detection(object):
             # Strats here:
             if self.status == 0:        # rotate 90 degrees
                 rospy.sleep(1)
-                self.rotate_by_degree(90, self.robot_odom.yaw)
+                self.rotate_by_degree(90)
                 self.status += 1
             elif self.status == 1:      # select target colour
                 self.colour_selection()
                 self.status += 1
             elif self.status == 2:      # turn back
-                self.rotate_by_degree(-90, self.robot_odom.yaw)
+                self.rotate_by_degree(-90)
                 self.status +=1
             elif self.status == 3:      # move to centre of map
                 self.robot_controller.set_move_cmd(0.2, 0.0)
                 self.robot_controller.publish()
-                rospy.sleep(5)
+                rospy.sleep(4)
                 self.status += 1
             elif self.status == 4:      # turn left to start scanning
-                self.rotate_by_degree(100, self.robot_odom.yaw)
+                self.rotate_by_degree(100)
                 self.status += 1
             elif self.status == 5:      # scan
                 if self.m00 > self.m00_min:
