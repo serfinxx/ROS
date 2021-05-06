@@ -93,12 +93,15 @@ class object_detection(object):
     def rotate_by_degree(self, degree, init_yaw):
         init_yaw = (init_yaw+720)%360
         target_yaw = (init_yaw+degree+720)%360
-        while abs(target_yaw-((self.robot_odom.yaw+360)%360)) > 1:
-            if degree > 0:
+        print(init_yaw)
+        if degree > 0:
+            while target_yaw-((self.robot_odom.yaw+360)%360) > 0:
                 self.robot_controller.set_move_cmd(0.0, 0.4)
-            else:
+                self.robot_controller.publish()
+        else:
+            while target_yaw-((self.robot_odom.yaw+360)%360) < 0:
                 self.robot_controller.set_move_cmd(0.0, -0.4)
-            self.robot_controller.publish()
+                self.robot_controller.publish()
             
         self.robot_controller.stop()
 
