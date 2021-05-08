@@ -18,7 +18,6 @@ from tb3_odometry import TB3Odometry
 # Import other modules
 import numpy as np
 import math
-from distribution import Distribution
 
 class search_and_beaconing(object):
 
@@ -40,7 +39,6 @@ class search_and_beaconing(object):
 
         self.robot_controller = MoveTB3()
         self.robot_odom = TB3Odometry()
-        self.distribution = Distribution()
         
         # Robot control vars
         self.robot_controller.set_move_cmd(0.0, 0.0)
@@ -55,16 +53,16 @@ class search_and_beaconing(object):
         self.m00 = 0
         self.m00_min = 100000
 
-        # Levy algorithm vars
-        self.walkable = False
-        self.desired_distance = 0
-        self.current_x = self.robot_odom.posx
-        self.current_y = self.robot_odom.posy
-        self.last_x = self.robot_odom.posx
-        self.last_y = self.robot_odom.posy
+        # Lidar vars
+        self.raw_data = np.array(tuple())
+
+        # Start zone checker vars
+        self.init_x = self.robot_odom.posx
+        self.init_y = self.robot_odom.posy
 
         # Satus control vars
         self.status = 0
+        self.task_done = False
 
         # Shutdown hook 
         self.ctrl_c = False
@@ -118,19 +116,19 @@ class search_and_beaconing(object):
     def lidar_callback(self, lidar_data):
         """Returns arrays of lidar data"""
 
-        raw_data = np.array(lidar_data.ranges)
+        self.raw_data = np.array(lidar_data.ranges)
 
         # Distance Detection
         self.lidar['front_distance'] = min(
-            min(min(raw_data[342:359]), min(raw_data[0:17])), 10)      # front 36 degrees
+            min(min(self.raw_data[342:359]), min(self.raw_data[0:17])), 10)      # front 36 degrees
         self.lidar['fleft_distance'] = min(
-            min(raw_data[306:342]), 10)      # front left 36 degrees
+            min(self.raw_data[306:342]), 10)      # front left 36 degrees
         self.lidar['fright_distance'] = min(
-            min(raw_data[18:54]), 10)      # front right 36 degrees
+            min(self.raw_data[18:54]), 10)      # front right 36 degrees
 
     def rotate_by_degree(self, degree):
         rospy.sleep(1)
-        speed = 0.4
+        speed = 0.8
         t = math.radians(abs(degree)) / speed
         if degree < 0:
             self.robot_controller.set_move_cmd(0.0, -speed)
@@ -151,81 +149,116 @@ class search_and_beaconing(object):
                 self.target_color_bounds = self.colour_boundaries[colour_name]
                 break
 
+    def spawn_zone_checker(self):
+        current_x = self.robot_odom.posx
+        current_y = self.robot_odom.posy
+        distance_to_spawn = np.sqrt(pow(current_x-self.init_x, 2) + pow(current_y-self.init_y, 2))
+
+        
+        current_global_yaw = (self.robot_odom.yaw+360)%360
+        global_angle_to_spawn = (math.degrees(math.atan2(self.init_x-current_x, self.init_y-current_y))-90+360)%360
+        local_angle_to_spawn = int(round(global_angle_to_spawn-current_global_yaw+360)%360)
+        
+        checker_vision = 0
+
+        if self.lidar['front_distance'] > 0.6:
+            checker_vision = 20
+        else: 
+            checker_vision = 65
+
+        left_lidar_index, right_lidar_index = int(local_angle_to_spawn-checker_vision), int(local_angle_to_spawn+checker_vision)
+
+        checker_distances = []
+
+        if left_lidar_index < 0:
+            checker_distances.extend(self.raw_data[(left_lidar_index+360):359])
+        else:
+            checker_distances.extend(self.raw_data[left_lidar_index:local_angle_to_spawn])
+
+        if right_lidar_index >= 360:
+            checker_distances.extend(self.raw_data[0:(right_lidar_index-360)])
+        else:
+            checker_distances.extend(self.raw_data[local_angle_to_spawn:right_lidar_index])
+
+        torlerance = 0.2
+
+        checker = False
+
+        for dis in checker_distances:
+            if abs(dis-distance_to_spawn) < torlerance:
+                checker =  True
+                break
+            else: 
+                checker = False
+
+        if distance_to_spawn < 1:
+            checker = True
+
+        return checker
+
     def target_seeker(self):
-        if self.m00 > self.m00_min:
+        if self.m00 > self.m00_min and not self.spawn_zone_checker():
+            self.status +=1
             # blob detected
             if self.cy >= 560-100 and self.cy <= 560+100:
                 if self.move_rate == 'slow':
                     self.move_rate = 'stop'
-                    self.stop_counter = 20
             else:
                 self.move_rate = 'slow'
         else:
             self.move_rate = 'fast'
             
         if self.move_rate == 'fast':
-            print("MOVING FAST: I can't see anything at the moment (blob size = {:.0f}), scanning the area...".format(self.m00))
-            self.robot_controller.set_move_cmd(0.0, self.turn_vel_fast)
+            self.obstacle_avodance()
         elif self.move_rate == 'slow':
-            print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
-            self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
-        elif self.move_rate == 'stop' and self.stop_counter > 0:
-            print("STOPPED: The blob of colour is now dead-ahead at y-position {:.0f} pixels... Counting down: {}".format(self.cy, self.stop_counter))
-            self.robot_controller.set_move_cmd(0.0, 0.0)
+            if self.cy <= 560-100:
+                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.3)
+                else:
+                    self.robot_controller.set_move_cmd(0.2, 0.15)
+            else:
+                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
+                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.3)
+                else:
+                    self.robot_controller.set_move_cmd(0.2, -0.15)
+        elif self.move_rate == 'stop':
+            if self.lidar['front_distance'] > 0.4:
+                self.robot_controller.set_move_cmd(0.2, 0.0)
+            else:
+                self.robot_controller.set_move_cmd(0.0, 0.0)
+                print("BEACONING COMPLETE: The robot has now stopped.")
+                self.task_done = True
         else:
-            print("MOVING SLOW: A blob of colour of size {:.0f} pixels is in view at y-position: {:.0f} pixels.".format(self.m00, self.cy))
             self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
         
         self.robot_controller.publish()
         self.rate.sleep()
 
-    def levy_flight_setup(self):
-        # Get the current robot odometry
-        self.desired_distance = 100 * self.distribution.levy(5)
-        desired_angle = self.distribution.uniform(-180,180)
-        self.rotate_by_degree(desired_angle)
-        self.robot_controller.set_move_cmd(0.2, 0.0)
-        print("desired distance is: {}".format (self.desired_distance))
-        print("desired angle is: {}".format (desired_angle))
-            
-    def levy_walker(self):
-        if self.walkable:
-            self.robot_controller.publish()
-            print("moving")
-            self.current_x = self.robot_odom.posx
-            self.current_y = self.robot_odom.posy
-            distance_travelled = np.sqrt(pow(self.current_x-self.last_x, 2) + pow(self.current_y-self.last_y, 2))
-            if self.lidar['front_distance'] < 0.3 or self.lidar['fleft_distance'] < 0.3 or self.lidar['fright_distance'] < 0.3 or distance_travelled >= self.desired_distance:
-                print("too close!! traveld {}".format (distance_travelled))
-                self.walkable = False
-                self.robot_controller.stop()
-        else:
-            self.levy_flight_setup()
-            self.last_x = self.robot_odom.posx
-            self.last_y = self.robot_odom.posy
-            if self.lidar['front_distance'] > 0.3 and self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] > 0.3:
-                print("walkable")
-                self.walkable = True
-
     def obstacle_avodance(self):
-        if self.lidar['front_distance'] > 0.3:
+        if self.lidar['front_distance'] > 0.4:
                 if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
+                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.6)
                 elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=0.4)
+                    self.robot_controller.set_move_cmd(linear=0.025, angular=0.6)
                 elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
+                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.6)
                 else:
                     self.robot_controller.set_move_cmd(linear=0.12, angular=0)
+                    if self.lidar['front_distance'] > 0.9:
+                        self.robot_controller.set_move_cmd(linear=0.26, angular=0)
         else:
             if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] > 0.3:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.6)
             elif self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.6)
             elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=0.4)
+                self.robot_controller.set_move_cmd(linear=0.0, angular=0.6)
             else:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.6)
         self.robot_controller.publish()
 
     def action_launcher(self):
@@ -241,14 +274,21 @@ class search_and_beaconing(object):
             if self.status == 2:      # turn back
                 self.rotate_by_degree(-90)
                 self.status +=1
+                self.init_x= self.robot_odom.posx
+                self.init_y= self.robot_odom.posy
             if self.status == 3:      # move out of start zone
                 rospy.sleep(1)
                 self.robot_controller.set_move_cmd(0.2, 0.0)
                 self.robot_controller.publish()
                 rospy.sleep(2)
-                self.status += 1
-            if self.status == 4:
-                self.levy_walker()
+                self.status += 1        
+            else:       # walking & searching
+                self.target_seeker()
+                if self.status == 5:
+                    print("BEACON DETECTED: Beaconing initiated.")
+                    self.status +=1
+                if self.task_done:
+                    break
             
                 
             
