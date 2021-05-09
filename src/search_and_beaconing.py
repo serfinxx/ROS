@@ -1,20 +1,15 @@
 #! /usr/bin/python
-
 # Import the core Python modules for ROS and to implement ROS Actions:
 import rospy
-
 # Import some image processing modules:
 import cv2
 from cv_bridge import CvBridge
-
 # Import all the necessary ROS message types:
 from sensor_msgs.msg import Image
 from sensor_msgs.msg import LaserScan
-
 # Import some other modules from within this package
 from move_tb3 import MoveTB3
 from tb3_odometry import TB3Odometry
-
 # Import other modules
 import numpy as np
 import math
@@ -23,26 +18,22 @@ class search_and_beaconing(object):
 
     def __init__(self):
         rospy.init_node('search_and_beaconing')
-
         # Camera subscriber
         self.camera_subscriber = rospy.Subscriber("/camera/rgb/image_raw",
             Image, self.camera_callback)
-
         # Lidar subscriber
         self.lidar_subscriber = rospy.Subscriber(
             '/scan', LaserScan, self.lidar_callback)
         self.lidar = {'front_distance': 0.0,
                       'fleft_distance': 0.0,
                       'fright_distance': 0.0}
-
         self.cvbridge_interface = CvBridge()
 
         self.robot_controller = MoveTB3()
         self.robot_odom = TB3Odometry()
-        
+
         # Robot control vars
         self.robot_controller.set_move_cmd(0.0, 0.0)
-
         # Camera vars
         self.hsv_img = np.zeros((1920,1080,3), np.uint8)
         self.target_color_bounds = ([0, 0, 100], [255, 255, 255])
@@ -67,19 +58,16 @@ class search_and_beaconing(object):
         # Shutdown hook 
         self.ctrl_c = False
         rospy.on_shutdown(self.shutdown_ops)
-
-        self.rate = rospy.Rate(5)
-
+        self.rate = rospy.Rate(1000)
         # Blue, Red, Green, Turquoise, Purple, Yellow hsv colour values:
         self.colour_boundaries = {
             "Red":    ([0, 185, 100], [10, 255, 255]),
             "Blue":   ([115, 224, 100],   [130, 255, 255]),
             "Yellow": ([28, 180, 100], [32, 255, 255]),
             "Green":   ([25, 150, 100], [70, 255, 255]),
-            "Turquoise":   ([75, 150, 100], [100, 255, 255]),
+            "Turquoise":   ([75, 50, 100], [90, 255, 255]),
             "Purple":   ([145, 185, 100], [150, 250, 255])
         }
-
     def shutdown_ops(self):
         self.robot_controller.stop()
         cv2.destroyAllWindows()
@@ -96,23 +84,16 @@ class search_and_beaconing(object):
         crop_height = 400
         crop_x = int((width/2) - (crop_width/2))
         crop_y = int((height/2) - (crop_height/2))
-
         crop_img = cv_img[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
         self.hsv_img = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
-
         self.mask = cv2.inRange(self.hsv_img, np.array(self.target_color_bounds[0]), np.array(self.target_color_bounds[1]))
-
         m = cv2.moments(self.mask)
         self.m00 = m['m00']
         self.cy = m['m10'] / (m['m00'] + 1e-5)
-
         if self.m00 > self.m00_min:
             cv2.circle(crop_img, (int(self.cy), 200), 10, (0, 0, 255), 2)
-
-
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
-
     def lidar_callback(self, lidar_data):
         """Returns arrays of lidar data"""
 
@@ -136,9 +117,7 @@ class search_and_beaconing(object):
             self.robot_controller.set_move_cmd(0.0, speed)
         self.robot_controller.publish()
         rospy.sleep(t)
-
         self.robot_controller.stop()
-
     def colour_selection(self):
         for colour_name, (lower, upper) in self.colour_boundaries.items():
             lower_bound = np.array(lower)
@@ -154,11 +133,11 @@ class search_and_beaconing(object):
         current_y = self.robot_odom.posy
         distance_to_spawn = np.sqrt(pow(current_x-self.init_x, 2) + pow(current_y-self.init_y, 2))
 
-        
+
         current_global_yaw = (self.robot_odom.yaw+360)%360
         global_angle_to_spawn = (math.degrees(math.atan2(self.init_x-current_x, self.init_y-current_y))-90+360)%360
         local_angle_to_spawn = int(round(global_angle_to_spawn-current_global_yaw+360)%360)
-        
+
         checker_vision = 0
 
         if self.lidar['front_distance'] > 0.6:
@@ -180,16 +159,15 @@ class search_and_beaconing(object):
         else:
             checker_distances.extend(self.raw_data[local_angle_to_spawn:right_lidar_index])
 
-        torlerance = 0.2
+        torlerance = 0.5
 
         checker = False
 
-        for dis in checker_distances:
-            if abs(dis-distance_to_spawn) < torlerance:
-                checker =  True
-                break
-            else: 
-                checker = False
+        if abs(any(checker_distances)-distance_to_spawn) < torlerance:
+            checker = True
+
+        if math.isinf(any(checker_distances)) and (324 < local_angle_to_spawn or local_angle_to_spawn < 36):
+            checker = True
 
         if distance_to_spawn < 1:
             checker = True
@@ -207,15 +185,15 @@ class search_and_beaconing(object):
                 self.move_rate = 'slow'
         else:
             self.move_rate = 'fast'
-            
+
         if self.move_rate == 'fast':
             self.obstacle_avodance()
         elif self.move_rate == 'slow':
             if self.cy <= 560-100:
                 if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
+                    self.robot_controller.set_move_cmd(linear=0.2, angular=-0.3)
                 elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.3)
+                    self.robot_controller.set_move_cmd(linear=0.2, angular=0.3)
                 else:
                     self.robot_controller.set_move_cmd(0.2, 0.15)
             else:
@@ -227,14 +205,14 @@ class search_and_beaconing(object):
                     self.robot_controller.set_move_cmd(0.2, -0.15)
         elif self.move_rate == 'stop':
             if self.lidar['front_distance'] > 0.4:
-                self.robot_controller.set_move_cmd(0.2, 0.0)
+                self.robot_controller.set_move_cmd(0.3, 0.0)
             else:
                 self.robot_controller.set_move_cmd(0.0, 0.0)
                 print("BEACONING COMPLETE: The robot has now stopped.")
                 self.task_done = True
         else:
             self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
-        
+
         self.robot_controller.publish()
         self.rate.sleep()
 
@@ -258,7 +236,7 @@ class search_and_beaconing(object):
             elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
                 self.robot_controller.set_move_cmd(linear=0.0, angular=0.6)
             else:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.6)
+                self.rotate_by_degree(self.raw_data.argmin())
         self.robot_controller.publish()
 
     def action_launcher(self):
@@ -289,9 +267,9 @@ class search_and_beaconing(object):
                     self.status +=1
                 if self.task_done:
                     break
-            
-                
-            
+
+
+
         
             
 if __name__ == '__main__':

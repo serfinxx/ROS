@@ -46,9 +46,9 @@ class obstacle_avoidance(object):
         # Distance Detection
         self.lidar['front_distance'] = min(
             min(min(raw_data[342:359]), min(raw_data[0:17])), 10)      # front 36 degrees
-        self.lidar['fleft_distance'] = min(
-            min(raw_data[306:342]), 10)      # front left 36 degrees
         self.lidar['fright_distance'] = min(
+            min(raw_data[306:342]), 10)      # front left 36 degrees
+        self.lidar['fleft_distance'] = min(
             min(raw_data[18:54]), 10)      # front right 36 degrees
 
 
@@ -64,20 +64,20 @@ class obstacle_avoidance(object):
         while not rospy.is_shutdown():
             # Action making
             if self.lidar['front_distance'] > 0.3:
-                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
+                if self.lidar['fright_distance'] > 0.3 and self.lidar['fleft_distance'] < 0.3:
                     self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
+                elif self.lidar['fright_distance'] < 0.3 and self.lidar['fleft_distance'] > 0.3:
                     self.robot_controller.set_move_cmd(linear=0.025, angular=0.4)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] < 0.3:
+                elif self.lidar['fright_distance'] < 0.3 and self.lidar['fleft_distance'] < 0.3:
                     self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
                 else:
                     self.robot_controller.set_move_cmd(linear=0.12, angular=0)
             else:
-                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] > 0.3:
+                if self.lidar['fright_distance'] > 0.3 and self.lidar['fleft_distance'] > 0.3:
                     self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
-                elif self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
+                elif self.lidar['fright_distance'] > 0.3 and self.lidar['fleft_distance'] < 0.3:
                     self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
+                elif self.lidar['fright_distance'] < 0.3 and self.lidar['fleft_distance'] > 0.3:
                     self.robot_controller.set_move_cmd(linear=0.0, angular=0.4)
                 else:
                     self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
