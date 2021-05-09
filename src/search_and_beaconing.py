@@ -10,9 +10,15 @@ from sensor_msgs.msg import LaserScan
 # Import some other modules from within this package
 from move_tb3 import MoveTB3
 from tb3_odometry import TB3Odometry
+from obstacle_avoidance import *
+
 # Import other modules
 import numpy as np
 import math
+
+FRONT = 'front'
+FRONT_LEFT = 'fleft'
+FRONT_RIGHT = 'fright'
 
 class search_and_beaconing(object):
 
@@ -21,19 +27,21 @@ class search_and_beaconing(object):
         # Camera subscriber
         self.camera_subscriber = rospy.Subscriber("/camera/rgb/image_raw",
             Image, self.camera_callback)
+
         # Lidar subscriber
-        self.lidar_subscriber = rospy.Subscriber(
-            '/scan', LaserScan, self.lidar_callback)
-        self.lidar = {'front_distance': 0.0,
-                      'fleft_distance': 0.0,
-                      'fright_distance': 0.0}
+        # self.lidar_subscriber = rospy.Subscriber(
+        #     '/scan', LaserScan, self.lidar_callback)
+        
+        # self.oa.lidar = { FRONT: 0.0, FRONT_LEFT: 0.0, FRONT_RIGHT: 0.0 }
         self.cvbridge_interface = CvBridge()
 
         self.robot_controller = MoveTB3()
         self.robot_odom = TB3Odometry()
+        self.oa = ObstacleAvoidance(robot_controller=self.robot_controller, init=False)
 
         # Robot control vars
         self.robot_controller.set_move_cmd(0.0, 0.0)
+
         # Camera vars
         self.hsv_img = np.zeros((1920,1080,3), np.uint8)
         self.target_color_bounds = ([0, 0, 100], [255, 255, 255])
@@ -45,7 +53,7 @@ class search_and_beaconing(object):
         self.m00_min = 100000
 
         # Lidar vars
-        self.raw_data = np.array(tuple())
+        # self.raw_data = np.array(tuple())
 
         # Start zone checker vars
         self.init_x = self.robot_odom.posx
@@ -68,6 +76,7 @@ class search_and_beaconing(object):
             "Turquoise":   ([75, 50, 100], [90, 255, 255]),
             "Purple":   ([145, 185, 100], [150, 250, 255])
         }
+    
     def shutdown_ops(self):
         self.robot_controller.stop()
         cv2.destroyAllWindows()
@@ -94,18 +103,34 @@ class search_and_beaconing(object):
             cv2.circle(crop_img, (int(self.cy), 200), 10, (0, 0, 255), 2)
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
-    def lidar_callback(self, lidar_data):
-        """Returns arrays of lidar data"""
+        
+    # def lidar_callback(self, lidar_data):
+    #     """Returns arrays of lidar data"""
 
-        self.raw_data = np.array(lidar_data.ranges)
+    #     self.oa.raw_data = np.array(lidar_data.ranges)
 
-        # Distance Detection
-        self.lidar['front_distance'] = min(
-            min(min(self.raw_data[342:359]), min(self.raw_data[0:17])), 10)      # front 36 degrees
-        self.lidar['fleft_distance'] = min(
-            min(self.raw_data[306:342]), 10)      # front left 36 degrees
-        self.lidar['fright_distance'] = min(
-            min(self.raw_data[18:54]), 10)      # front right 36 degrees
+    #     # Distance Detection
+    #     self.oa.lidar[FRONT] = min(
+    #         min(min(self.oa.raw_data[342:359]), min(self.oa.raw_data[0:17])), 10)      # front 36 degrees
+        
+    #     self.oa.lidar[FRONT_LEFT] = min(
+    #         min(self.oa.raw_data[306:342]), 10)      # front left 36 degrees
+        
+    #     self.oa.lidar[FRONT_RIGHT] = min(
+    #         min(self.oa.raw_data[18:54]), 10)      # front right 36 degrees
+
+    #     # Sort dict
+    #     sorted_values = sorted(self.oa.lidar.values()) # Sort the values
+    #     s = {}
+
+    #     for i in sorted_values:
+    #         for k in self.oa.lidar.keys():
+    #             if self.oa.lidar[k] == i:
+    #                 s[k] = self.oa.lidar[k]
+    #                 break
+
+    #     print(self.oa.lidar)
+        # print("Closest is {} furthest is {}".format(s.keys()[0], s.keys()[2]))
 
     def rotate_by_degree(self, degree):
         rospy.sleep(1)
@@ -118,6 +143,7 @@ class search_and_beaconing(object):
         self.robot_controller.publish()
         rospy.sleep(t)
         self.robot_controller.stop()
+
     def colour_selection(self):
         for colour_name, (lower, upper) in self.colour_boundaries.items():
             lower_bound = np.array(lower)
@@ -133,14 +159,13 @@ class search_and_beaconing(object):
         current_y = self.robot_odom.posy
         distance_to_spawn = np.sqrt(pow(current_x-self.init_x, 2) + pow(current_y-self.init_y, 2))
 
-
         current_global_yaw = (self.robot_odom.yaw+360)%360
         global_angle_to_spawn = (math.degrees(math.atan2(self.init_x-current_x, self.init_y-current_y))-90+360)%360
         local_angle_to_spawn = int(round(global_angle_to_spawn-current_global_yaw+360)%360)
 
         checker_vision = 0
 
-        if self.lidar['front_distance'] > 0.6:
+        if self.oa.lidar[FRONT] > 0.6:
             checker_vision = 20
         else: 
             checker_vision = 65
@@ -150,20 +175,20 @@ class search_and_beaconing(object):
         checker_distances = []
 
         if left_lidar_index < 0:
-            checker_distances.extend(self.raw_data[(left_lidar_index+360):359])
+            checker_distances.extend(self.oa.raw_data[(left_lidar_index+360):359])
         else:
-            checker_distances.extend(self.raw_data[left_lidar_index:local_angle_to_spawn])
+            checker_distances.extend(self.oa.raw_data[left_lidar_index:local_angle_to_spawn])
 
         if right_lidar_index >= 360:
-            checker_distances.extend(self.raw_data[0:(right_lidar_index-360)])
+            checker_distances.extend(self.oa.raw_data[0:(right_lidar_index-360)])
         else:
-            checker_distances.extend(self.raw_data[local_angle_to_spawn:right_lidar_index])
+            checker_distances.extend(self.oa.raw_data[local_angle_to_spawn:right_lidar_index])
 
         torlerance = 0.5
 
         checker = False
 
-        if abs(any(checker_distances)-distance_to_spawn) < torlerance:
+        if abs(any(checker_distances) - distance_to_spawn) < torlerance:
             checker = True
 
         if math.isinf(any(checker_distances)) and (324 < local_angle_to_spawn or local_angle_to_spawn < 36):
@@ -175,6 +200,7 @@ class search_and_beaconing(object):
         return checker
 
     def target_seeker(self):
+        # print(self.m00)
         if self.m00 > self.m00_min and not self.spawn_zone_checker():
             self.status +=1
             # blob detected
@@ -187,28 +213,27 @@ class search_and_beaconing(object):
             self.move_rate = 'fast'
 
         if self.move_rate == 'fast':
-            self.obstacle_avodance()
+            self.oa.attempt_avoidance()
         elif self.move_rate == 'slow':
             if self.cy <= 560-100:
-                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
+                if self.oa.lidar[FRONT_LEFT] > 0.3 and self.oa.lidar[FRONT_RIGHT] < 0.3:
                     self.robot_controller.set_move_cmd(linear=0.2, angular=-0.3)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
+                elif self.oa.lidar[FRONT_LEFT] < 0.3 and self.oa.lidar[FRONT_RIGHT] > 0.3:
                     self.robot_controller.set_move_cmd(linear=0.2, angular=0.3)
                 else:
                     self.robot_controller.set_move_cmd(0.2, 0.15)
             else:
-                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
+                if self.oa.lidar[FRONT_LEFT] > 0.3 and self.oa.lidar[FRONT_RIGHT] < 0.3:
                     self.robot_controller.set_move_cmd(linear=0.0, angular=-0.3)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
+                elif self.oa.lidar[FRONT_LEFT] < 0.3 and self.oa.lidar[FRONT_RIGHT] > 0.3:
                     self.robot_controller.set_move_cmd(linear=0.0, angular=0.3)
                 else:
                     self.robot_controller.set_move_cmd(0.2, -0.15)
         elif self.move_rate == 'stop':
-            if self.lidar['front_distance'] > 0.4:
+            if self.oa.lidar[FRONT] > 0.4:
                 self.robot_controller.set_move_cmd(0.3, 0.0)
             else:
                 self.robot_controller.set_move_cmd(0.0, 0.0)
-                print("BEACONING COMPLETE: The robot has now stopped.")
                 self.task_done = True
         else:
             self.robot_controller.set_move_cmd(0.0, self.turn_vel_slow)
@@ -216,60 +241,100 @@ class search_and_beaconing(object):
         self.robot_controller.publish()
         self.rate.sleep()
 
-    def obstacle_avodance(self):
-        if self.lidar['front_distance'] > 0.4:
-                if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.6)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=0.6)
-                elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.6)
-                else:
-                    self.robot_controller.set_move_cmd(linear=0.12, angular=0)
-                    if self.lidar['front_distance'] > 0.9:
-                        self.robot_controller.set_move_cmd(linear=0.26, angular=0)
-        else:
-            if self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] > 0.3:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.6)
-            elif self.lidar['fleft_distance'] > 0.3 and self.lidar['fright_distance'] < 0.3:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=-0.6)
-            elif self.lidar['fleft_distance'] < 0.3 and self.lidar['fright_distance'] > 0.3:
-                self.robot_controller.set_move_cmd(linear=0.0, angular=0.6)
-            else:
-                self.rotate_by_degree(self.raw_data.argmin())
+    # def obstacle_avodance(self):
+    #     front = self.oa.lidar[FRONT]
+    #     fleft = self.oa.lidar[FRONT_LEFT]
+    #     fright = self.oa.lidar[FRONT_RIGHT]
+
+    #     TURN_SPEED = 0.4 # 0.6
+    #     if self.oa.lidar[FRONT] > 0.4:
+    #         if self.oa.lidar[FRONT_LEFT] > 0.3 and self.oa.lidar[FRONT_RIGHT] < 0.3:
+    #             self.robot_controller.set_move_cmd(linear=0.025, angular= -TURN_SPEED)
+    #         elif self.oa.lidar[FRONT_LEFT] < 0.3 and self.oa.lidar[FRONT_RIGHT] > 0.3:
+    #             self.robot_controller.set_move_cmd(linear=0.025, angular= TURN_SPEED)
+    #         elif self.oa.lidar[FRONT_LEFT] < 0.3 and self.oa.lidar[FRONT_RIGHT] < 0.3:
+    #             self.robot_controller.set_move_cmd(linear=0.025, angular= -TURN_SPEED)
+    #         else:
+    #             self.robot_controller.set_move_cmd(linear=0.12, angular=0)
+    #             if self.oa.lidar[FRONT] > 0.9:
+    #                 self.robot_controller.set_move_cmd(linear=0.26, angular=0)
+    #     else:
+    #         if self.oa.lidar[FRONT_LEFT] > 0.3 and self.oa.lidar[FRONT_RIGHT] > 0.3:
+    #             self.robot_controller.set_move_cmd(linear=0.0, angular= -TURN_SPEED)
+    #         elif self.oa.lidar[FRONT_LEFT] > 0.3 and self.oa.lidar[FRONT_RIGHT] < 0.3:
+    #             self.robot_controller.set_move_cmd(linear=0.0, angular= -TURN_SPEED)
+    #         elif self.oa.lidar[FRONT_LEFT] < 0.3 and self.oa.lidar[FRONT_RIGHT] > 0.3:
+    #             self.robot_controller.set_move_cmd(linear=0.0, angular= TURN_SPEED)
+    #         else:
+    #             self.rotate_by_degree(self.oa.raw_data.argmin())
+    #     self.robot_controller.publish()
+
+    def find_target_colour(self):
+        # Rotate 90 deg to find target colour
+        rospy.sleep(1)
+        self.rotate_by_degree(90)
+        # self.status += 1
+
+        # select target colour
+        self.colour_selection()
+        # self.status += 1
+        
+        # turn back
+        self.rotate_by_degree(-90)
+        self.init_x= self.robot_odom.posx
+        self.init_y= self.robot_odom.posy
+        # self.status +=1
+        
+        # move out of start zone
+        rospy.sleep(1)
+        self.robot_controller.set_move_cmd(0.2, 0.0)
         self.robot_controller.publish()
+        rospy.sleep(2)
 
     def action_launcher(self):
+        self.find_target_colour()
+
         while not self.ctrl_c:
-            # Strats here:
-            if self.status == 0:        # rotate 90 degrees
-                rospy.sleep(1)
-                self.rotate_by_degree(90)
-                self.status += 1
-            if self.status == 1:      # select target colour
-                self.colour_selection()
-                self.status += 1
-            if self.status == 2:      # turn back
-                self.rotate_by_degree(-90)
+            rospy.sleep(0.2)
+            self.target_seeker()
+
+            if self.status == 1:
+                print("BEACON DETECTED: Beaconing initiated")
                 self.status +=1
-                self.init_x= self.robot_odom.posx
-                self.init_y= self.robot_odom.posy
-            if self.status == 3:      # move out of start zone
-                rospy.sleep(1)
-                self.robot_controller.set_move_cmd(0.2, 0.0)
-                self.robot_controller.publish()
-                rospy.sleep(2)
-                self.status += 1        
-            else:       # walking & searching
-                self.target_seeker()
-                if self.status == 5:
-                    print("BEACON DETECTED: Beaconing initiated.")
-                    self.status +=1
-                if self.task_done:
-                    break
+            
+            if self.task_done:
+                break
+        
+        print("BEACONING COMPLETE: The robot has now stopped.")
 
-
-
+        # while not self.ctrl_c:
+        #     # Strats here:
+        #     if self.status == 0:        # rotate 90 degrees
+        #         rospy.sleep(1)
+        #         self.rotate_by_degree(90)
+        #         print("Hello")
+        #         self.status += 1
+        #     if self.status == 1:      # select target colour
+        #         self.colour_selection()
+        #         self.status += 1
+        #     if self.status == 2:      # turn back
+        #         self.rotate_by_degree(-90)
+        #         self.status +=1
+        #         self.init_x= self.robot_odom.posx
+        #         self.init_y= self.robot_odom.posy
+        #     if self.status == 3:      # move out of start zone
+        #         rospy.sleep(1)
+        #         self.robot_controller.set_move_cmd(0.2, 0.0)
+        #         self.robot_controller.publish()
+        #         rospy.sleep(2)
+        #         self.status += 1        
+        #     else:       # walking & searching
+        #         self.target_seeker()
+        #         if self.status == 5:
+        #             print("BEACON DETECTED: Beaconing initiated.")
+        #             self.status +=1
+        #         if self.task_done:
+        #             break
         
             
 if __name__ == '__main__':
