@@ -5,7 +5,6 @@ import rospy
 import actionlib
 
 # Import all the necessary ROS message types:
-from com2009_actions.msg import SearchFeedback, SearchResult, SearchAction
 from sensor_msgs.msg import LaserScan
 
 # Import some other modules from within this package (copied from other package)
@@ -17,77 +16,119 @@ import datetime as dt
 import os
 import numpy as np
 
+FRONT = 'front'
+FRONT_LEFT = 'fleft'
+FRONT_RIGHT = 'fright'
 
-class obstacle_avoidance(object):
-
-    def __init__(self):
+class ObstacleAvoidance(object):
+    def __init__(self, front_range = 36, fleft_range = 36, fright_range = 36, fdist_thresh=0.4, rldist_thresh=0.1, robot_controller=None, init=True):
         # Initialise action server
-        rospy.init_node('obstacle_avoidance')
+        if init:
+            rospy.init_node('obstacle_avoidance')
         # Lidar subscriber
         self.lidar_subscriber = rospy.Subscriber(
-            '/scan', LaserScan, self.callback_lidar)
-        self.lidar = {'front_distance': 0.0,
-                      'fleft_distance': 0.0,
-                      'fright_distance': 0.0}
+            '/scan', LaserScan, self.lidar_callback)
+
+        self.lidar = { FRONT: 0.0, FRONT_LEFT: 0.0, FRONT_RIGHT: 0.0 }
+        self.raw_data = np.array(tuple())
+
+        f_right = int(front_range / 2)
+        f_left = 359 - f_right
+
+        self.r_front = [ (f_left, 359), (0, f_right) ]
+        self.r_fleft = (f_left - fleft_range, f_left)
+        self.r_fright = (f_right, f_right + fright_range)
+
+        self.fdist_thresh = fdist_thresh
+        self.rldist_thresh = rldist_thresh
 
         # Robot movement and odometry
-        self.robot_controller = MoveTB3()
+        if robot_controller is None:
+            self.robot_controller = MoveTB3()
+        else:
+            self.robot_controller = robot_controller
 
         self.ctrl_c = False
         rospy.on_shutdown(self.shutdown_ops)
 
         self.rate = rospy.Rate(5)
 
-    def callback_lidar(self, lidar_data):
+    def lidar_callback(self, lidar_data):
         """Returns arrays of lidar data"""
 
-        raw_data = np.array(lidar_data.ranges)
+        self.raw_data = np.array(lidar_data.ranges)
+        f = self.r_front
+        l = self.r_fleft
+        r = self.r_fright
 
         # Distance Detection
-        self.lidar['front_distance'] = min(
-            min(min(raw_data[342:359]), min(raw_data[0:17])), 10)      # front 36 degrees
-        self.lidar['fright_distance'] = min(
-            min(raw_data[306:342]), 10)      # front left 36 degrees
-        self.lidar['fleft_distance'] = min(
-            min(raw_data[18:54]), 10)      # front right 36 degrees
-
+        self.lidar[FRONT] = min(
+            min(min(self.raw_data[f[0][0]:f[0][1]]), min(self.raw_data[f[1][0]:f[1][1]])), 10)      # front 36 degrees
+        
+        self.lidar[FRONT_LEFT] = min(
+            min(self.raw_data[l[0]:l[1]]), 10)      # front left 36 degrees
+        
+        self.lidar[FRONT_RIGHT] = min(
+            min(self.raw_data[r[0]:r[1]]), 10)      # front right 36 degrees
 
     def shutdown_ops(self):
         self.robot_controller.stop()
         self.ctrl_c = True
 
-    def action_launcher(self):
+    def attempt_avoidance(self):
+        front = self.lidar[FRONT]
+        fleft = self.lidar[FRONT_LEFT]
+        fright = self.lidar[FRONT_RIGHT]
 
+        t = self.rldist_thresh
+        degrees = 0
+
+        print("F: {}, T: {}".format(front, self.fdist_thresh))
+        # If we're too close to the object right in front of us
+        if front < self.fdist_thresh:
+            self.robot_controller.stop()
+            if fright > fleft:
+                degrees = -25
+            else:
+                angular = 25
+        
+        self.robot_controller.deg_rotate(degrees)
+
+
+        # if front > self.fdist_thresh:
+        #     if fright > t and fleft < t:
+        #         self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
+        #     elif fright < t and fleft > t:
+        #         self.robot_controller.set_move_cmd(linear=0.025, angular=0.4)
+        #     elif fright < t and fleft < t:
+        #         self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
+        #     else:
+        #         self.robot_controller.set_move_cmd(linear=0.12, angular=0)
+        # else:
+        #     if fright > t and fleft > t:
+        #         self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+        #     elif fright > t and fleft < t:
+        #         self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+        #     elif fright < t and fleft > t:
+        #         self.robot_controller.set_move_cmd(linear=0.0, angular=0.4)
+        #     else:
+        #         self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
+
+        # self.robot_controller.set_move_cmd(linear=linear, angular=angular)
+        # self.robot_controller.publish()
+
+    def action_launcher(self):
         # set the robot velocity:
         self.robot_controller.set_move_cmd(linear=0)
 
         while not rospy.is_shutdown():
-            # Action making
-            if self.lidar['front_distance'] > 0.3:
-                if self.lidar['fright_distance'] > 0.3 and self.lidar['fleft_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
-                elif self.lidar['fright_distance'] < 0.3 and self.lidar['fleft_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=0.4)
-                elif self.lidar['fright_distance'] < 0.3 and self.lidar['fleft_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.025, angular=-0.4)
-                else:
-                    self.robot_controller.set_move_cmd(linear=0.12, angular=0)
-            else:
-                if self.lidar['fright_distance'] > 0.3 and self.lidar['fleft_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
-                elif self.lidar['fright_distance'] > 0.3 and self.lidar['fleft_distance'] < 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
-                elif self.lidar['fright_distance'] < 0.3 and self.lidar['fleft_distance'] > 0.3:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=0.4)
-                else:
-                    self.robot_controller.set_move_cmd(linear=0.0, angular=-0.4)
-            self.robot_controller.publish()
+            self.attempt_avoidance()
 
             
 
 
 if __name__ == '__main__':
-    oa = obstacle_avoidance()
+    oa = ObstacleAvoidance()
     try:
         oa.action_launcher()
     except rospy.ROSInterruptException:
