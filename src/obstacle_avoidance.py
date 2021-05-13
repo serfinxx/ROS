@@ -93,7 +93,7 @@ class ObstacleAvoidance(object):
     
             self.robot_controller.deg_rotate(degrees)
         
-        print("F: {}, L: {}, R; {}".format(front, fleft, fright))
+        #print("F: {}, L: {}, R; {}".format(front, fleft, fright))
 
 
         # if front > self.fdist_thresh:
