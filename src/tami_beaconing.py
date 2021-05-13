@@ -2,6 +2,7 @@
 
 # Import the core Python modules for ROS and to implement ROS Actions:
 import rospy
+import math
 # Import some image processing modules:
 import cv2
 from cv_bridge import CvBridge
@@ -17,6 +18,9 @@ from obstacle_avoidance import *
 import numpy as np
 import math
 
+# Rotating the robot for looking around leads to unintended changes in direction
+# Just mae the view wider
+
 class Beaconing(object):
     def __init__(self, speed=0.2, look_around_time=6):
         self.speed = speed
@@ -25,11 +29,11 @@ class Beaconing(object):
         rospy.init_node('beaconing')
 
         # camera + colour
+        self.view_high = False
         self.cam = rospy.Subscriber('/camera/rgb/image_raw', Image, self.camera_callback)
         self.hsv_img = np.zeros((1920, 1080, 3), np.uint8)
         self.target_colour_bounds = ([0, 0, 100], [255, 255, 255])
         self.mask = np.zeros((1920, 1080, 1), np.uint8)
-        self.crop_height = 200
         self.colour_boundaries = {
             "Red":    ([0, 185, 100], [10, 255, 255]),
             "Blue":   ([115, 224, 100],   [130, 255, 255]),
@@ -40,6 +44,8 @@ class Beaconing(object):
         }
         self.m00 = 0
         self.m00_min = 10000
+
+        self.width_crop = 800
 
         self.robot = MoveTB3()
         self.robot_odom = TB3Odometry()
@@ -71,11 +77,15 @@ class Beaconing(object):
             print(e)
         
         height, width, channels = cv_img.shape
+
         crop_width = width - 800
-        crop_height = self.crop_height
+        crop_height = 200
+        offset = 500 if self.view_high else 0
+
         crop_x = int((width/2) - (crop_width/2))
-        crop_y = int((height - crop_height) - (crop_height/2))
-        crop_img = cv_img[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
+        crop_y = int((height - crop_height - offset) - (crop_height/2))
+
+        crop_img = cv_img[crop_y:crop_y+crop_height, 0:width]
 
         self.hsv_img = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
 
@@ -87,7 +97,7 @@ class Beaconing(object):
         self.width = width
 
         if self.m00 > self.m00_min:
-            cv2.circle(crop_img, (int(self.cy), 200), 10, (0, 0, 255), 2)
+            cv2.circle(crop_img, (int(self.cy), crop_height / 2), 10, (0, 0, 255), 2)
         
         cv2.imshow('cropped image', crop_img)
         cv2.waitKey(1)
@@ -147,25 +157,44 @@ class Beaconing(object):
         
         self.look_around_countdown -= 1
         if self.look_around_countdown < 1:
+            # self.width_crop = 100
             self.target_check = True
-            self.look_around_countdown = self.look_around_time
-            self.look_around()
+            # self.look_around_countdown = self.look_around_time
+            # self.look_around()
 
     def park_at_target(self):
         if self.park_stage == 0:
             print("Found Target Colour")
-            self.crop_height = 400
+            self.view_high = True
+            self.found_target = False
             self.park_stage += 1
-
-        y_error = self.cy - (self.width / 2)
-
-        kp = 1.0 / 50.0
-        fwd_vel = 0.1
-        ang_vel = kp * y_error
+            self.robot.set_move_cmd(0.0, 0.0)
+            self.robot.publish()
+        elif self.park_stage == 1:
+            self.check_for_target()
+            if self.m00 > self.m00_min:
+                self.park_stage += 1
+                print("Lock on {}".format(self.cy))
+            
+            self.robot.deg_rotate(10)
+            self.robot.set_move_cmd(0.1, 0.0)
+            self.robot.publish()
+        else:
+            if self.oa.lidar[FRONT] < 0.3:
+                self.task_complete = True
         
-        print("CY: {:.3f}, Y-error = {:.3f} pixels, ang_vel = {:.3f} rad/s".format(y_error, ang_vel))
-        self.robot.set_move_cmd(fwd_vel, ang_vel)
-        self.robot.publish()
+
+        # y_error = self.cy - (self.width / 2)
+
+        # kp = -1.0 / 200.0
+        # fwd_vel = 0.1
+        # ang_vel = kp * y_error
+        # if abs(ang_vel) > 1:
+        #     ang_vel = math.copysign(1, ang_vel)
+        
+        # print("CY: {:.3f}, Width {:.3f}, Y-error = {:.3f} pixels, ang_vel = {:.3f} rad/s".format(self.cy, self.width, y_error, ang_vel))
+        # self.robot.set_move_cmd(fwd_vel, ang_vel)
+        # self.robot.publish()
 
 
         # self.robot.set_move_cmd(self.speed, 0.0)
@@ -191,7 +220,7 @@ class Beaconing(object):
         print("SEARCH INITITATED: The target colour is {}".format(target))
 
         while not (self.ctrl_c or self.task_complete):
-            if self.found_target:
+            if self.found_target or self.view_high:
                 self.park_at_target()
             else:
                 self.seek()
