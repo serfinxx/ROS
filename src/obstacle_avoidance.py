@@ -83,16 +83,17 @@ class ObstacleAvoidance(object):
         t = self.rldist_thresh
         degrees = 0
 
-        print("F: {}, T: {}".format(front, self.fdist_thresh))
         # If we're too close to the object right in front of us
         if front < self.fdist_thresh:
             self.robot_controller.stop()
             if fright > fleft:
-                degrees = -25
+                degrees = 25
             else:
-                angular = 25
+                degrees = -25
+    
+            self.robot_controller.deg_rotate(degrees)
         
-        self.robot_controller.deg_rotate(degrees)
+        print("F: {}, L: {}, R; {}".format(front, fleft, fright))
 
 
         # if front > self.fdist_thresh:

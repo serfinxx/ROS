@@ -26,9 +26,9 @@ class Beaconing(object):
 
         # camera + colour
         self.cam = rospy.Subscriber('/camera/rgb/image_raw', Image, self.camera_callback)
-        self.hsv_img = np.zeroes((1920, 1080, 3), np.uint8)
+        self.hsv_img = np.zeros((1920, 1080, 3), np.uint8)
         self.target_colour_bounds = ([0, 0, 100], [255, 255, 255])
-        self.mask = np.zeroes((1920, 1080, 1), np.uint8)
+        self.mask = np.zeros((1920, 1080, 1), np.uint8)
         self.colour_boundaries = {
             "Red":    ([0, 185, 100], [10, 255, 255]),
             "Blue":   ([115, 224, 100],   [130, 255, 255]),
@@ -37,6 +37,8 @@ class Beaconing(object):
             "Turquoise":   ([75, 50, 100], [90, 255, 255]),
             "Purple":   ([145, 185, 100], [150, 250, 255])
         }
+        self.m00 = 0
+        self.m00_min = 100000
 
         self.robot = MoveTB3()
         self.robot_odom = TB3Odometry()
@@ -46,6 +48,13 @@ class Beaconing(object):
         
         self.ctrl_c = False
         rospy.on_shutdown(self.shutdown)
+
+        r = 20 # Hz
+        self.rate = rospy.Rate(r)
+        self.look_around_time = r * 3 # look around every 3 seconds
+        self.look_around_countdown = self.look_around_time
+
+        self.task_complete = False
 
     def shutdown(self):
         cv2.destroyAllWindows()
@@ -64,7 +73,7 @@ class Beaconing(object):
         crop_y = int((height/2) - (crop_height/2))
         crop_img = cv_img[crop_y:crop_y+crop_height, crop_x:crop_x+crop_width]
         self.hsv_img = cv2.cvtColor(crop_img, cv2.COLOR_BGR2HSV)
-        self.mask = cv2.inRange(self.hsv_img, np.array(self.target_colour_bounds[0]), np.array(self.target_color_bounds[1]))
+        self.mask = cv2.inRange(self.hsv_img, np.array(self.target_colour_bounds[0]), np.array(self.target_colour_bounds[1]))
         m = cv2.moments(self.mask)
         self.m00 = m['m00']
         self.cy = m['m10'] / (m['m00'] + 1e-5)
@@ -83,7 +92,12 @@ class Beaconing(object):
                 return name, (lower, upper)
 
     def seek(self):
-        self.oa.attempt_avoidance(0)
+        self.oa.attempt_avoidance()
+        self.robot.set_move_cmd(self.speed, 0.0)
+        self.robot.publish()
+    
+    def look_around(self):
+        print("Look Around")
 
     
     def begin(self):
@@ -92,7 +106,7 @@ class Beaconing(object):
 
         target, self.target_colour_bounds = self.colour_selection()
 
-        self.deg_rotate(-90)
+        self.robot.deg_rotate(-90)
 
         self.robot.set_move_cmd(self.speed, 0.0)
         self.robot.publish()
@@ -101,6 +115,13 @@ class Beaconing(object):
 
         while not (self.ctrl_c or self.task_complete):
             self.seek()
+
+            self.look_around_countdown -= 1
+            if self.look_around_countdown < 1:
+                self.look_around_countdown = self.look_around_time
+                self.look_around()
+
+            self.rate.sleep()
 
         if self.task_complete:
             print("BEACONING COMPLETE: The robot has now")
