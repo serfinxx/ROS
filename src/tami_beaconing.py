@@ -49,7 +49,7 @@ class Beaconing(object):
 
         self.robot = MoveTB3()
         self.robot_odom = TB3Odometry()
-        self.oa = ObstacleAvoidance(robot_controller=self.robot, init=False)
+        self.oa = ObstacleAvoidance(left_range=70, right_range=70, robot_controller=self.robot, init=False)
 
         self.cvbridge_interface = CvBridge()
         
@@ -79,7 +79,7 @@ class Beaconing(object):
         height, width, channels = cv_img.shape
 
         crop_width = width - 800
-        crop_height = 200
+        crop_height = 300
         offset = 300 if self.view_high else 0
 
         crop_x = int((width/2) - (crop_width/2))
@@ -176,11 +176,12 @@ class Beaconing(object):
                 self.park_stage += 1
                 print("Lock on {}".format(self.cy))
         elif self.park_stage == 2:
-            rot = (self.cy / self.width) - (0.5 * (0 if self.cy == 0.0 else 1)) * -1
-            print("{} {}".format(rot, abs(rot - 1) < 0.05))
+            rot = ((self.cy / self.width) - (0.5 * (0 if self.cy == 0.0 else 1))) * -1
             self.robot.deg_rotate(rot)
 
-            if abs(rot - 1) < 0.05:
+            straight_ahead = abs(rot) < 0.05
+            print("{} {}".format(rot, straight_ahead))
+            if straight_ahead:
                 self.park_stage += 1
             # self.robot.set_move_cmd(0.1, 0.0)
             # self.robot.publish()
@@ -189,28 +190,6 @@ class Beaconing(object):
             self.robot.publish()
             if self.oa.lidar[FRONT] < 0.3:
                 self.task_complete = True
-        
-
-        # y_error = self.cy - (self.width / 2)
-
-        # kp = -1.0 / 200.0
-        # fwd_vel = 0.1
-        # ang_vel = kp * y_error
-        # if abs(ang_vel) > 1:
-        #     ang_vel = math.copysign(1, ang_vel)
-        
-        # print("CY: {:.3f}, Width {:.3f}, Y-error = {:.3f} pixels, ang_vel = {:.3f} rad/s".format(self.cy, self.width, y_error, ang_vel))
-        # self.robot.set_move_cmd(fwd_vel, ang_vel)
-        # self.robot.publish()
-
-
-        # self.robot.set_move_cmd(self.speed, 0.0)
-        # self.robot.publish()
-
-
-
-        # print(self.oa.lidar[FRONT])
-        # self.task_complete = self.oa.lidar[FRONT] < 0.5
 
     
     def begin(self):
