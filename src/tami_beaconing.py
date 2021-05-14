@@ -80,7 +80,7 @@ class Beaconing(object):
 
         crop_width = width - 800
         crop_height = 200
-        offset = 500 if self.view_high else 0
+        offset = 300 if self.view_high else 0
 
         crop_x = int((width/2) - (crop_width/2))
         crop_y = int((height - crop_height - offset) - (crop_height/2))
@@ -175,11 +175,18 @@ class Beaconing(object):
             if self.m00 > self.m00_min:
                 self.park_stage += 1
                 print("Lock on {}".format(self.cy))
-            
-            self.robot.deg_rotate(10)
-            self.robot.set_move_cmd(0.1, 0.0)
-            self.robot.publish()
+        elif self.park_stage == 2:
+            rot = (self.cy / self.width) - (0.5 * (0 if self.cy == 0.0 else 1)) * -1
+            print("{} {}".format(rot, abs(rot - 1) < 0.05))
+            self.robot.deg_rotate(rot)
+
+            if abs(rot - 1) < 0.05:
+                self.park_stage += 1
+            # self.robot.set_move_cmd(0.1, 0.0)
+            # self.robot.publish()
         else:
+            self.robot.set_move_cmd(self.speed, 0.0)
+            self.robot.publish()
             if self.oa.lidar[FRONT] < 0.3:
                 self.task_complete = True
         
@@ -226,6 +233,8 @@ class Beaconing(object):
                 self.seek()
 
             self.rate.sleep()
+
+        self.robot.stop()
 
         if self.task_complete:
             print("BEACONING COMPLETE: The robot has now reached the target")
