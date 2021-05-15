@@ -49,7 +49,8 @@ class Beaconing(object):
 
         self.robot = MoveTB3()
         self.robot_odom = TB3Odometry()
-        self.oa = ObstacleAvoidance(left_range=70, right_range=70, robot_controller=self.robot, init=False)
+        self.oa = ObstacleAvoidance(fdist_thresh=0.55, left_range=70, right_range=70, robot_controller=self.robot, init=False)
+
 
         self.cvbridge_interface = CvBridge()
         
@@ -175,20 +176,43 @@ class Beaconing(object):
             if self.m00 > self.m00_min:
                 self.park_stage += 1
                 print("Lock on {}".format(self.cy))
+            else:
+                self.robot.deg_rotate(5)
         elif self.park_stage == 2:
             rot = ((self.cy / self.width) - (0.5 * (0 if self.cy == 0.0 else 1))) * -1
             self.robot.deg_rotate(rot)
 
-            straight_ahead = abs(rot) < 0.05
-            print("{} {}".format(rot, straight_ahead))
+            straight_ahead = abs(rot) < 0.1
+            # print("{} {}".format(rot, straight_ahead))
             if straight_ahead:
                 self.park_stage += 1
+                self.robot_odom.cache_current_data()
             # self.robot.set_move_cmd(0.1, 0.0)
             # self.robot.publish()
         else:
             self.robot.set_move_cmd(self.speed, 0.0)
             self.robot.publish()
+            # Need to integrate some odom in here so we steer out of the
+            # the way of things and still head to the goal
+
+            # at the start of this step cache the yaw
+            # when the yaw deviates from that value, wait a bit
+            # then take into account the distance covered in that distance
+            # then attempt to rotate to make up for that distance 
+
+            if self.m00 == 0.0:
+                self.park_stage = 0
+                self.found_target = False
+
+            self.oa.attempt_avoidance()
+
+            if (self.robot_odom.yaw != self.robot_odom.cache_yaw):
+                print("Curr Y: {} Cached Y: {} M00: {}".format(self.robot_odom.yaw, self.robot_odom.cache_yaw, self.m00))
+
+            # Good M00: 101439000.0, 142878795.0, 94630500.0
+
             if self.oa.lidar[FRONT] < 0.3:
+                print("M00: {}".format(self.m00))
                 self.task_complete = True
 
     
@@ -205,11 +229,17 @@ class Beaconing(object):
 
         print("SEARCH INITITATED: The target colour is {}".format(target))
 
+        p = True
+
         while not (self.ctrl_c or self.task_complete):
             if self.found_target or self.view_high:
                 self.park_at_target()
             else:
                 self.seek()
+
+            # p = not p
+            # if p:
+            #     print("X: {}, Y: {}".format(self.robot_odom.posx, self.robot_odom.posy))
 
             self.rate.sleep()
 
