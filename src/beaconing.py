@@ -203,8 +203,8 @@ class Beaconing(object):
             if self.m00 == 0.0:
                 self.park_stage = 0
                 self.found_target = False
-
-            self.oa.attempt_avoidance()
+            elif abs(self.m00) < 1000000:
+                self.oa.attempt_avoidance()
 
             if (self.robot_odom.yaw != self.robot_odom.cache_yaw):
                 print("Curr Y: {} Cached Y: {} M00: {}".format(self.robot_odom.yaw, self.robot_odom.cache_yaw, self.m00))

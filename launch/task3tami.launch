@@ -1,4 +1,0 @@
-<launch>
-  <node name="tami_beaconing" pkg="team54" type="tami_beaconing.py" output="screen">
-  </node>
-</launch>
