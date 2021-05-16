@@ -129,7 +129,7 @@ class object_detection(object):
             elif self.status == 3:      # move to centre of map
                 self.robot_controller.set_move_cmd(0.2, 0.0)
                 self.robot_controller.publish()
-                rospy.sleep(4)
+                rospy.sleep(3)
                 self.status += 1
             elif self.status == 4:      # turn left to start scanning
                 self.rotate_by_degree(100)
