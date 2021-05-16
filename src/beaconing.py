@@ -185,6 +185,7 @@ class Beaconing(object):
             straight_ahead = abs(rot) < 0.1
             # print("{} {}".format(rot, straight_ahead))
             if straight_ahead:
+                self.robot.deg_rotate(-10)
                 self.park_stage += 1
                 self.robot_odom.cache_current_data()
             # self.robot.set_move_cmd(0.1, 0.0)
