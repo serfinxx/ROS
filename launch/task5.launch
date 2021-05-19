@@ -1,3 +1,4 @@
 <launch>
   <node name='final_task' pkg='team54' type='final_task.py' output='screen'>
+  </node>
 </launch>
