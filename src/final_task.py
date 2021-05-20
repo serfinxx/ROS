@@ -141,46 +141,35 @@ class final_task(object):
         self.robot_controller.stop()
 
     def leave_spawn(self):
-        """
-            This method is only used at beginning for leaving spawn.
-        """
+        # Method to leave spawn
         rospy.sleep(1)
         self.robot_controller.set_move_cmd(0.2, 0.0)
         self.robot_controller.publish()
         rospy.sleep(3)
 
     def check_right(self):
-        """
-            Check the distance over 0.5 of right
-        """
+        # Check distance on the right (0.5)
         if self.dead_right90 < 0.5:
             self.right_status = True
         else:
             self.right_status = False
 
     def check_left(self):
-        """
-            Check the distance over 0.5 of left
-        """
+        # Check distance on the left (0.5)
         if self.dead_left90 < 0.5:
             self.left_status = True
         else:
             self.left_status = False
 
     def check_front(self):
-        """
-            Check the distance over 0.5 of front
-        """
+        # Check distance in front (0.5)
         if self.dead_front < 0.445:
             self.front_status = True
         else:
             self.front_status = False
 
     def turn_dead_right(self):
-        """
-            Turn to dead right direction
-        """
-        print "turn right to dead dir"
+        # Turn Dead Right
         self.robot_controller.set_move_cmd(0.0, -0.62)
         self.robot_controller.publish()
         rospy.sleep(2.5)
@@ -188,14 +177,10 @@ class final_task(object):
             self.robot_controller.set_move_cmd(0.0, -0.2)
             self.robot_controller.publish()
         self.robot_controller.stop()
-        print"stopped"
         rospy.sleep(0.5)
 
     def turn_dead_left(self):
-        """
-            Turn to dead left direction
-        """
-        print "turn left to dead dir"
+        # Turn Dead Left
         self.robot_controller.set_move_cmd(0.0, 0.62)
         self.robot_controller.publish()
         rospy.sleep(2.5)
@@ -203,58 +188,181 @@ class final_task(object):
             self.robot_controller.set_move_cmd(0.0, 0.3)
             self.robot_controller.publish()
         self.robot_controller.stop()
-        print"stopped"
         rospy.sleep(0.5)
 
     def avoid_wall(self):
-        """
-            Wall avoidance
-        """
+        # Wall avoidance
         if self.left_arc < 0.32:
             self.robot_controller.set_move_cmd(0.0, -0.3)
             self.robot_controller.publish()
-            print("adjusting, turning right")
+
         elif self.right_arc < 0.32:
             self.robot_controller.set_move_cmd(0.0, 0.3)
             self.robot_controller.publish()
-            print("adjusting, turning left")
         else:
             if self.front_arc > 0.6:
                 self.robot_controller.set_move_cmd(0.25, 0.0)
                 self.robot_controller.publish()
-                print("moving fast")
             else:
                 self.robot_controller.set_move_cmd(0.15, 0.0)
                 self.robot_controller.publish()
-                print("moving slow")
+
+    def colour_selection(self):
+        for name, (lower, upper) in self.colour_boundaries.items():
+            lb = np.array(lower)
+            ub = np.array(upper)
+            mask_checker = cv2.inRange(self.hsv_img, lb, ub)
+
+            if mask_checker.any():
+                return name, (lower, upper)
+
+    def check_for_target(self):
+        selection = self.colour_selection()
+        if selection != None:
+            _, bounds = selection
+            self.found_target = bounds == self.target_colour_bounds
+            return True
+        return False
+    
+    def look_around(self):
+        print("Look Around")
+        angle = 30 # Sweep 30 Deg
+
+        # Check forward
+        found_a_col = self.check_for_target()
+        if self.found_target:
+            return
+        # Check left
+        self.robot_controller.deg_rotate(-angle)
+        found_a_col |= self.check_for_target()
+        if self.found_target:
+            return
+        
+        self.robot_controller.deg_rotate(angle)
+
+        # Check right
+        self.robot_controller.deg_rotate(angle)
+        found_a_col |= self.check_for_target()
+        if self.found_target:
+            return
+        
+        self.robot_controller.deg_rotate(-angle)
+
+        if found_a_col:
+            self.robot_controller.deg_rotate(-10)
+        
+
+    def seek(self):
+        self.oa.attempt_avoidance()
+        self.robot_controller.set_move_cmd(self.speed, 0.0)
+        self.robot_controller.publish()
+
+        if self.target_check:
+            self.check_for_target()
+        
+        self.look_around_countdown -= 1
+        if self.look_around_countdown < 1:
+            self.target_check = True
+
+    def park_at_target(self):
+        if self.park_stage == 0:
+            print("TARGET BEACON IDENTIFIED: Beaconing Initiated")
+            self.view_high = True
+            self.found_target = False
+            self.park_stage += 1
+            self.robot_controller.set_move_cmd(0.0, 0.0)
+            self.robot_controller.publish()
+        elif self.park_stage == 1:
+            self.check_for_target()
+            if self.m00 > self.m00_min:
+                self.park_stage += 1
+                print("Lock on {}".format(self.cy))
+            else:
+                self.robot_controller.deg_rotate(5)
+        elif self.park_stage == 2:
+            rot = ((self.cy / self.width) - (0.5 * (0 if self.cy == 0.0 else 1))) * -1
+            self.robot_controller.deg_rotate(rot)
+
+            straight_ahead = abs(rot) < 0.1
+
+            if straight_ahead:
+                self.robot_controller.deg_rotate(-10)
+                self.park_stage += 1
+                self.robot_odom.cache_current_data()
+
+        else:
+            self.robot_controller.set_move_cmd(self.speed, 0.0)
+            self.robot_controller.publish()
+
+            # at the start of this step cache the yaw
+            # when the yaw deviates from that value, wait a bit
+            # then take into account the distance covered in that distance
+            # then attempt to rotate to make up for that distance 
+
+            if self.m00 == 0.0:
+                self.park_stage = 0
+                self.found_target = False
+            elif abs(self.m00) < 1000000:
+                self.oa.attempt_avoidance()
+
+            if (self.robot_odom.yaw != self.robot_odom.cache_yaw):
+                print("Curr Y: {} Cached Y: {} M00: {}".format(self.robot_odom.yaw, self.robot_odom.cache_yaw, self.m00))
+
+            # Good M00: 101439000.0, 142878795.0, 94630500.0
+
+            if self.oa.lidar[FRONT] < 0.3:
+                print("M00: {}".format(self.m00))
+                self.task_complete = True
 
     def action_launcher(self):
+        rospy.sleep(1)
+        self.robot_controller.deg_rotate(90)
+
+        target, self.target_colour_bounds = self.colour_selection()
+
+        self.robot_controller.deg_rotate(-90)
+        self.robot_controller.publish()
+
+        print("TARGET COLOUR DETECTED: The target beacon is {}".format(target))
+
+        p = True
+
         self.leave_spawn()   #move forward
+
         while not self.ctrl_c and not self.task_done:
-            self.check_left()
-            self.check_right()
-            self.check_front()
-            if self.left_status == True and self.front_status == True:
-                self.robot_controller.stop()
-                self.turn_dead_right()
-            elif self.right_status == True and self.front_status == True:
-                self.robot_controller.stop()
-                self.turn_dead_left()
-            elif self.front_status == True and self.right_status == False and self.left_status == False:
-                if self.T_turn == 0:
-                    self.robot_controller.stop()
-                    self.turn_dead_left()
-                    self.T_turn += 1
-                elif self.T_turn == 1:
+            if self.found_target or self.view_high:
+                self.park_at_target()
+            else:
+                self.check_left()
+                self.check_right()
+                self.check_front()
+                if self.left_status == True and self.front_status == True:
                     self.robot_controller.stop()
                     self.turn_dead_right()
-                    self.T_turn += 1
-                elif self.T_turn == 2:
+                elif self.right_status == True and self.front_status == True:
                     self.robot_controller.stop()
                     self.turn_dead_left()
-            else:
-                self.avoid_wall()
+                elif self.front_status == True and self.right_status == False and self.left_status == False:
+                    if self.T_turn == 0:
+                        self.robot_controller.stop()
+                        self.turn_dead_left()
+                        self.T_turn += 1
+                    elif self.T_turn == 1:
+                        self.robot_controller.stop()
+                        self.turn_dead_right()
+                        self.T_turn += 1
+                    elif self.T_turn == 2:
+                        self.robot_controller.stop()
+                        self.turn_dead_left()
+                else:
+                    self.avoid_wall()
+                self.seek()
+            self.rate.sleep()
 
+        self.robot_controller.stop()
+
+        if self.task_complete:
+            print("BEACONING COMPLETE: The robot has now reached the target")
 
 if __name__ == '__main__':
     ft = final_task()
