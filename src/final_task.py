@@ -143,23 +143,23 @@ class finan_chanllenge(object):
             self.robot.set_move_cmd(0.0, -0.5)
         self.robot.publish()
 
-    def checkSpawn(self):
+    def check_spawn(self):
         """
-            This method always returns True if the distance to the spawn is smaller than 1.5
+            This method always returns True if the distance to the spawn is smaller than 2
         """
         current_x = self.robot_odom.posx
         current_y = self.robot_odom.posy
 
         distance_travelled = np.sqrt(pow(self.init_x-current_x, 2) + pow(self.init_y-current_y, 2))
 
-        if distance_travelled < 1.5:
+        if distance_travelled < 2:
             return True
         else:
             return False
 
     def check_for_target(self):
         selection = self.colour_selection()
-        if selection != None and (not self.checkSpawn()):
+        if (selection != None) and (not self.check_spawn()) and self.m00 > 10000000:
             _, bounds = selection
             self.found_target = bounds == self.target_colour_bounds
             return True
@@ -208,12 +208,10 @@ class finan_chanllenge(object):
     def park_at_target(self):
         if self.park_stage == 0:
             print("TARGET BEACON IDENTIFIED: Beaconing initiated.")
-            self.found_target = False
             self.park_stage += 1
             self.robot.set_move_cmd(0.0, 0.0)
             self.robot.publish()
         elif self.park_stage == 1:
-            self.check_for_target()
             if self.m00 > self.m00_min:
                 self.park_stage += 1
                 # print("Lock on {}".format(self.cy))
@@ -246,7 +244,7 @@ class finan_chanllenge(object):
                 self.park_stage = 0
                 self.found_target = False
             elif abs(self.m00) < 10000000:
-                self.oa.attempt_avoidance()
+                self.wall_following()
 
             #if (self.robot_odom.yaw != self.robot_odom.cache_yaw):
             #    print("Curr Y: {} Cached Y: {} M00: {}".format(self.robot_odom.yaw, self.robot_odom.cache_yaw, self.m00))
