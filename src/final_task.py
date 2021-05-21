@@ -127,24 +127,32 @@ class finan_chanllenge(object):
             following right side wall
         """
         d = 0.4
-        if self.front > d and self.fleft > d and self.fright > d:
+        if self.front > d+0.2 and self.fleft > d and self.fright > d:
             self.robot.set_move_cmd(0.15, -0.3)
+            print("1")
         elif self.front < d and self.fleft > d and self.fright > d:
             self.robot.set_move_cmd(0.0, 0.3)
-        elif self.front > d and self.fleft > d and self.fright < d:
+            print("2")
+        elif self.front > d+0.2 and self.fleft > d and self.fright < d:
             self.robot.set_move_cmd(0.15, 0.0)
-        elif self.front > d and self.fleft < d and self.fright > d:
+            print("3")
+        elif self.front > d+0.2 and self.fleft < d and self.fright > d:
             self.robot.set_move_cmd(0.15, -0.3)
+            print("4")
         elif self.front < d and self.fleft > d and self.fright < d:
             self.robot.set_move_cmd(0.0, 0.3)
+            print("5")
         elif self.front < d and self.fleft < d and self.fright > d:
             self.robot.set_move_cmd(0.0, 0.3)
+            print("6")
         elif self.front < d and self.fleft < d and self.fright < d:
             self.robot.set_move_cmd(0.0, 0.3)
-        elif self.front > d and self.fleft < d and self.fright < d:
+            print("7")
+        elif self.front > d+0.2 and self.fleft < d and self.fright < d:
             self.robot.set_move_cmd(0.15, -0.3)
+            print("8")
         else:
-            self.robot.set_move_cmd(0.2, 0.0)
+            self.robot.set_move_cmd(0.0, -0.3)
         self.robot.publish()
 
     def leave_spawn(self):
