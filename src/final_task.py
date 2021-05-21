@@ -69,6 +69,9 @@ class finan_chanllenge(object):
         self.look_around_time = r * look_around_time # look around every 3 seconds
         self.look_around_countdown = r * 10 # So that we don't start looking around immediately
 
+        self.init_x = self.robot_odom.posx
+        self.init_y = self.robot_odom.posy
+
         self.target_check = False
         self.found_target = False
         self.task_complete = False
@@ -107,7 +110,6 @@ class finan_chanllenge(object):
         cv2.waitKey(1)
 
     def scan_callback(self, scan_data):
-        self.dead_right90 = scan_data.ranges[-90]
 
         self.fright = min(min(scan_data.ranges[-70:-14]), 10)
         self.front = min(min(min(scan_data.ranges[0:15]), min(scan_data.ranges[-15:-1])), 10)
@@ -140,15 +142,23 @@ class finan_chanllenge(object):
             self.robot.set_move_cmd(0.0, -0.5)
         self.robot.publish()
 
-    def leave_spawn(self):
-        rospy.sleep(1)
-        self.robot.set_move_cmd(0.2, 0.0)    
-        self.robot.publish()
-        rospy.sleep(1)
+    def checkSpawn(self):
+        """
+            This method always returns True if the distance to the spawn is smaller than 1.5
+        """
+        current_x = self.robot_odom.posx
+        current_y = self.robot_odom.posy
+
+        distance_travelled = np.sqrt(pow(init_x-current_x, 2) + pow(init_y-current_y, 2))
+
+        if distance_travelled < 1.5:
+            return True
+        else:
+            return False
 
     def check_for_target(self):
         selection = self.colour_selection()
-        if selection != None:
+        if selection != None and not self.checkSpawn():
             _, bounds = selection
             self.found_target = bounds == self.target_colour_bounds
             return True
@@ -205,7 +215,7 @@ class finan_chanllenge(object):
             self.check_for_target()
             if self.m00 > self.m00_min:
                 self.park_stage += 1
-                print("Lock on {}".format(self.cy))
+                # print("Lock on {}".format(self.cy))
             else:
                 self.robot.deg_rotate(5)
         elif self.park_stage == 2:
@@ -242,7 +252,7 @@ class finan_chanllenge(object):
 
             # Good M00: 101439000.0, 142878795.0, 94630500.0
 
-            if self.oa.lidar[FRONT] < 0.3:
+            if self.front < 0.3:
                 print("M00: {}".format(self.m00))
                 self.task_complete = True
 
