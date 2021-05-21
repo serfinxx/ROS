@@ -101,6 +101,7 @@ class finan_chanllenge(object):
         m = cv2.moments(self.mask)
         self.m00 = m['m00']
         self.cy = m['m10'] / (m['m00'] + 1e-5)
+        self.width = width
 
         if self.m00 > self.m00_min:
             cv2.circle(crop_img, (int(self.cy), 200), 10, (0, 0, 255), 2)
@@ -149,7 +150,7 @@ class finan_chanllenge(object):
         current_x = self.robot_odom.posx
         current_y = self.robot_odom.posy
 
-        distance_travelled = np.sqrt(pow(init_x-current_x, 2) + pow(init_y-current_y, 2))
+        distance_travelled = np.sqrt(pow(self.init_x-current_x, 2) + pow(self.init_y-current_y, 2))
 
         if distance_travelled < 1.5:
             return True
@@ -158,7 +159,7 @@ class finan_chanllenge(object):
 
     def check_for_target(self):
         selection = self.colour_selection()
-        if selection != None and not self.checkSpawn():
+        if selection != None and (not self.checkSpawn()):
             _, bounds = selection
             self.found_target = bounds == self.target_colour_bounds
             return True
@@ -247,8 +248,8 @@ class finan_chanllenge(object):
             elif abs(self.m00) < 1000000:
                 self.oa.attempt_avoidance()
 
-            if (self.robot_odom.yaw != self.robot_odom.cache_yaw):
-                print("Curr Y: {} Cached Y: {} M00: {}".format(self.robot_odom.yaw, self.robot_odom.cache_yaw, self.m00))
+            #if (self.robot_odom.yaw != self.robot_odom.cache_yaw):
+            #    print("Curr Y: {} Cached Y: {} M00: {}".format(self.robot_odom.yaw, self.robot_odom.cache_yaw, self.m00))
 
             # Good M00: 101439000.0, 142878795.0, 94630500.0
 
