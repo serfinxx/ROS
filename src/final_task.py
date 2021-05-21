@@ -267,6 +267,8 @@ class finan_chanllenge(object):
 
         self.robot.set_move_cmd(self.speed, 0.0)
         self.robot.publish()
+        self.init_x = self.robot_odom.posx
+        self.init_y = self.robot_odom.posy
 
         print("TARGET COLOUR DETECTED: The target beacon is {}".format(target))
 
