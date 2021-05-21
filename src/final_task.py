@@ -196,8 +196,7 @@ class finan_chanllenge(object):
 
     def park_at_target(self):
         if self.park_stage == 0:
-            print("Found Target Colour")
-            self.view_high = True
+            print("TARGET BEACON IDENTIFIED: Beaconing initiated.")
             self.found_target = False
             self.park_stage += 1
             self.robot.set_move_cmd(0.0, 0.0)
@@ -278,7 +277,7 @@ class finan_chanllenge(object):
         self.robot.stop()
 
         if self.task_complete:
-            print("BEACONING COMPLETE: The robot has now reached the target")
+            print("FINAL CHALLENGE COMPLETE: The robot has now stopped.")
          
 if __name__ == '__main__':
     fc = finan_chanllenge()
