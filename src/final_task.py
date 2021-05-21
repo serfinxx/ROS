@@ -107,11 +107,11 @@ class finan_chanllenge(object):
         cv2.waitKey(1)
 
     def scan_callback(self, scan_data):
-        self.right = min(min(scan_data.ranges[-90:-54]), 10)
-        self.fright = min(min(scan_data.ranges[-53:-18]), 10)
-        self.front = min(min(min(scan_data.ranges[0:17]), min(scan_data.ranges[-17:-1])), 10)
-        self.fleft = min(min(scan_data.ranges[18:53]), 10)
-        self.left = min(min(scan_data.ranges[54:90]), 10)
+        self.dead_right90 = scan_data.ranges[-90]
+
+        self.fright = min(min(scan_data.ranges[-70:-14]), 10)
+        self.front = min(min(min(scan_data.ranges[0:15]), min(scan_data.ranges[-15:-1])), 10)
+        self.fleft = min(min(scan_data.ranges[16:70]), 10)
 
     def colour_selection(self):
         for name, (lower, upper) in self.colour_boundaries.items():
@@ -126,33 +126,18 @@ class finan_chanllenge(object):
         """
             following right side wall
         """
-        d = 0.4
-        if self.front > d+0.2 and self.fleft > d and self.fright > d:
-            self.robot.set_move_cmd(0.15, -0.3)
-            print("1")
-        elif self.front < d and self.fleft > d and self.fright > d:
-            self.robot.set_move_cmd(0.0, 0.3)
-            print("2")
-        elif self.front > d+0.2 and self.fleft > d and self.fright < d:
-            self.robot.set_move_cmd(0.15, 0.0)
-            print("3")
-        elif self.front > d+0.2 and self.fleft < d and self.fright > d:
-            self.robot.set_move_cmd(0.15, -0.3)
-            print("4")
-        elif self.front < d and self.fleft > d and self.fright < d:
-            self.robot.set_move_cmd(0.0, 0.3)
-            print("5")
-        elif self.front < d and self.fleft < d and self.fright > d:
-            self.robot.set_move_cmd(0.0, 0.3)
-            print("6")
-        elif self.front < d and self.fleft < d and self.fright < d:
-            self.robot.set_move_cmd(0.0, 0.3)
-            print("7")
-        elif self.front > d+0.2 and self.fleft < d and self.fright < d:
-            self.robot.set_move_cmd(0.15, -0.3)
-            print("8")
+        d = 0.35
+        
+        if self.front > d and self.fright > d:
+            self.robot.set_move_cmd(0.18, -0.8)
+        elif self.front < d and self.fright > d:
+            self.robot.set_move_cmd(0.0, -0.5)
+        elif self.front > d and self.fright < d:
+            self.robot.set_move_cmd(0.18, 0.5)
+        elif self.front < d and self.fright < d:
+            self.robot.set_move_cmd(0.0, 0.5)
         else:
-            self.robot.set_move_cmd(0.0, -0.3)
+            self.robot.set_move_cmd(0.0, -0.5)
         self.robot.publish()
 
     def leave_spawn(self):
@@ -197,9 +182,7 @@ class finan_chanllenge(object):
             self.robot.deg_rotate(-10)
         
     def seek(self):
-        self.oa.attempt_avoidance()
-        self.robot.set_move_cmd(self.speed, 0.0)
-        self.robot.publish()
+        self.wall_following()
 
         if self.target_check:
             self.check_for_target()
@@ -266,38 +249,36 @@ class finan_chanllenge(object):
 
     
     def begin(self):
-        while not self.ctrl_c:
-            self.wall_following()
-        # rospy.sleep(1)
-        # self.robot.deg_rotate(90)
+        rospy.sleep(1)
+        self.robot.deg_rotate(90)
 
-        # target, self.target_colour_bounds = self.colour_selection()
+        target, self.target_colour_bounds = self.colour_selection()
 
-        # self.robot.deg_rotate(-90)
+        self.robot.deg_rotate(-90)
 
-        # self.robot.set_move_cmd(self.speed, 0.0)
-        # self.robot.publish()
+        self.robot.set_move_cmd(self.speed, 0.0)
+        self.robot.publish()
 
-        # print("SEARCH INITITATED: The target colour is {}".format(target))
+        print("TARGET COLOUR DETECTED: The target beacon is {}".format(target))
 
-        # p = True
+        p = True
 
-        # while not (self.ctrl_c or self.task_complete):
-        #     if self.found_target:
-        #         self.park_at_target()
-        #     else:
-        #         self.seek()
+        while not (self.ctrl_c or self.task_complete):
+            if self.found_target:
+                self.park_at_target()
+            else:
+                self.seek()
 
-        #     # p = not p
-        #     # if p:
-        #     #     print("X: {}, Y: {}".format(self.robot_odom.posx, self.robot_odom.posy))
+            # p = not p
+            # if p:
+            #     print("X: {}, Y: {}".format(self.robot_odom.posx, self.robot_odom.posy))
 
-        #     self.rate.sleep()
+            self.rate.sleep()
 
-        # self.robot.stop()
+        self.robot.stop()
 
-        # if self.task_complete:
-        #     print("BEACONING COMPLETE: The robot has now reached the target")
+        if self.task_complete:
+            print("BEACONING COMPLETE: The robot has now reached the target")
          
 if __name__ == '__main__':
     fc = finan_chanllenge()
