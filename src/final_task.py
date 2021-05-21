@@ -42,7 +42,7 @@ class finan_chanllenge(object):
             "Purple":   ([145, 150, 100], [155, 255, 255])
         }
         self.m00 = 0
-        self.m00_min = 10000
+        self.m00_min = 10000000
 
         self.width_crop = 800
 
